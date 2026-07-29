@@ -22,6 +22,14 @@ from jira_report import SPRINT_FIELD_ID, adf_to_text, fetch_changelog, fetch_iss
 # may use a different ID.
 STORY_POINTS_FIELD_ID = "customfield_13078"
 
+# Confirmed via /rest/api/3/field on this instance: Jira Software's native
+# "Rank" field (com.pyxis.greenhopper.jira:gh-lexo-rank) — the real, team-set
+# backlog order (drag-and-drop), unlike Priority which sits at an unused
+# default ("Lowest") for every PART epic and carries no signal. Epics are
+# ordered by this field's LexoRank string, ascending. Other projects/instances
+# may use a different ID.
+RANK_FIELD_ID = "customfield_10019"
+
 # How many closed sprints to show in the velocity history chart.
 MAX_VELOCITY_SPRINTS = 6
 
@@ -38,15 +46,6 @@ INITIATIVE_NAME = "AA-431 — Digital Health Partnerships – Phase 1 Provider F
 EXCLUDED_STATUSES = {"discard"}
 DONE_STATUS_NAMES = {"done", "closed", "resolved", "discard", "cancelled", "canceled"}
 
-# Jira's standard priority ladder, ranked high→low so epics can be sorted and a
-# change direction (raised/lowered) inferred. Unknown/None sorts last (rank 0).
-_PRIORITY_RANK = {"highest": 5, "high": 4, "medium": 3, "low": 2, "lowest": 1}
-
-
-def _priority_rank(name: str | None) -> int:
-    return _PRIORITY_RANK.get((name or "").lower(), 0)
-
-
 def search(base_url, email, token, jql, fields):
     return fetch_issues(base_url, email, token, jql, fields=fields)
 
@@ -56,38 +55,34 @@ def search(base_url, email, token, jql, fields):
 # ---------------------------------------------------------------------------
 
 
-def _recent_priority_change(base_url, email, token, key, cutoff) -> dict | None:
-    """Most recent priority change on an epic within the window, from changelog.
+def _recent_rank_change(base_url, email, token, key, cutoff) -> dict | None:
+    """Most recent backlog-Rank move on an epic within the window, from changelog.
 
-    Returns {from, to, when, direction} or None. `direction` is raised/lowered/
-    changed so the slide can show which way it moved even when the labels are
-    custom. Needs a per-issue changelog GET (bulk search omits history) — cheap
-    here since it's only run over epics (~10), not the whole backlog."""
+    Jira's Rank field (LexoRank) only ever logs a directional toString —
+    "Ranked higher"/"Ranked lower" — never the actual from/to position, so
+    unlike a priority change there's no from/to label to carry, just when and
+    which way. Needs a per-issue changelog GET (bulk search omits history) —
+    cheap here since it's only run over epics (~10), not the whole backlog."""
     latest = None
     for h in fetch_changelog(base_url, email, token, key):
         when = parse_jira_datetime(h.get("created"))
         if not when or when < cutoff:
             continue
         for item in h.get("items", []):
-            if item.get("field") == "priority" and (latest is None or when > latest[0]):
-                latest = (when, item.get("fromString"), item.get("toString"))
+            if item.get("field") == "Rank" and (latest is None or when > latest[0]):
+                latest = (when, item.get("toString"))
     if not latest:
         return None
-    _, frm, to = latest
-    if _priority_rank(to) > _priority_rank(frm):
-        direction = "raised"
-    elif _priority_rank(to) < _priority_rank(frm):
-        direction = "lowered"
-    else:
-        direction = "changed"
-    return {"from": frm, "to": to, "when": latest[0].date().isoformat(), "direction": direction}
+    when, to_string = latest
+    direction = "raised" if "higher" in (to_string or "").lower() else "lowered"
+    return {"when": when.date().isoformat(), "direction": direction}
 
 
 def compute_epics(base_url, email, token, project, since_days) -> dict:
     epics = search(
         base_url, email, token,
         f"project = {project} AND issuetype = Epic",
-        ["summary", "status", "parent", "description", "priority", "created", "resolutiondate"],
+        ["summary", "status", "parent", "description", RANK_FIELD_ID, "created", "resolutiondate"],
     )
     cutoff = datetime.now(timezone.utc) - timedelta(days=since_days)
     linked, other, excluded = [], [], []
@@ -107,7 +102,6 @@ def compute_epics(base_url, email, token, project, since_days) -> dict:
         target = linked if parent and parent.get("key") == INITIATIVE_KEY else other
         children = search(base_url, email, token, f"parent = {e['key']}", ["resolutiondate"])
         done = sum(1 for c in children if c["fields"].get("resolutiondate"))
-        priority = (f.get("priority") or {}).get("name")
         created = parse_jira_datetime(f.get("created"))
         resolved = parse_jira_datetime(f.get("resolutiondate"))
         target.append(
@@ -119,8 +113,9 @@ def compute_epics(base_url, email, token, project, since_days) -> dict:
                 # Plain-text goal/scope so the LLM can describe the work and its
                 # value from real source text, not just the one-line title.
                 "description": adf_to_text(f.get("description")),
-                "priority": priority,
-                "priority_rank": _priority_rank(priority),
+                # Internal-only LexoRank sort key (popped below) — real,
+                # team-set backlog order, not the unused Priority field.
+                "_rank": f.get(RANK_FIELD_ID) or "",
                 "status": status,
                 # In flight = actively being worked (Jira "In Progress" category),
                 # vs "New"/backlog (not started) or Done.
@@ -130,12 +125,14 @@ def compute_epics(base_url, email, token, project, since_days) -> dict:
                 # slide's "started | done" tile is genuinely last-N-days on both
                 # halves, not started-ever vs. started-ever.
                 "is_done_recent": bool(resolved and resolved >= cutoff),
-                "priority_change": _recent_priority_change(base_url, email, token, e["key"], cutoff),
+                "rank_change": _recent_rank_change(base_url, email, token, e["key"], cutoff),
             }
         )
-    # Priority order: highest first, then key for a stable tie-break.
-    linked.sort(key=lambda x: (-x["priority_rank"], x["key"]))
-    other.sort(key=lambda x: (-x["priority_rank"], x["key"]))
+    # Real backlog order: LexoRank strings sort correctly as plain strings.
+    linked.sort(key=lambda x: x["_rank"])
+    other.sort(key=lambda x: x["_rank"])
+    for e in linked + other:
+        del e["_rank"]
     return {
         "linked": linked,
         "other": other,
@@ -461,16 +458,6 @@ def compute_stats(base_url, email, token, project, since_days, trend_weeks) -> d
             "test/junk data (not all under the excluded Sample Epic — some are individually discarded "
             "stories under real epics) and are excluded from resolved_this_period/backlog_delivered/"
             "throughput_per_week — not counted as real delivery."
-        )
-
-    # Priority order/changes are only meaningful signal if priorities actually vary.
-    active_epics = epics["linked"] + epics["other"]
-    epic_priorities = {e["priority"] for e in active_epics}
-    if len(active_epics) > 1 and len(epic_priorities) == 1:
-        only = next(iter(epic_priorities))
-        auto_caveats.append(
-            f'All epics share priority "{only}" — likely an unused default, so "priority order" '
-            "and priority changes carry no real signal until priorities are set."
         )
 
     blockers = compute_blockers(base_url, email, token, project)

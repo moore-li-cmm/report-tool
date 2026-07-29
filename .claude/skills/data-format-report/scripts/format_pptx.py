@@ -6,11 +6,11 @@ hand-tweaked in PowerPoint/Keynote/Google Slides before sending on. Everything
 is real text boxes / shapes / a native chart, so it edits like any normal
 slide. Self-contained: only python-pptx, no Jira engine or HTML template.
 
-Layout follows the Innova "Executive Summary" format: a KPI tile row, then
-Active epics + What's-next (left), Key updates (center), and Throughput trend +
-Focus areas (right). Scoped to the fields PART's Jira data actually supports
-(no Spend / Say-Do — Story points/Velocity render once a sprint exists, else a
-"not tracked"/"awaiting data" placeholder, never a mock number).
+Layout follows the Innova "Executive Summary" format: a KPI tile row, then two
+even columns — Active epics + What's-next (left) and Key updates + Focus areas
+(right). Scoped to the fields PART's Jira data actually supports (no Spend /
+Say-Do — the Story points KPI tile renders once a sprint exists, else a "not
+tracked" placeholder, never a mock number).
 
 Usage:
     ./.venv/bin/python .claude/skills/data-format-report/scripts/format_pptx.py
@@ -20,12 +20,9 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime
 
 from pptx import Presentation
-from pptx.chart.data import CategoryChartData
 from pptx.dml.color import RGBColor
-from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import MSO_ANCHOR, MSO_AUTO_SIZE, PP_ALIGN
 from pptx.util import Emu, Inches, Pt
@@ -40,15 +37,7 @@ WHITE = RGBColor(0xFF, 0xFF, 0xFF)
 BAR_GOOD = RGBColor(0x2E, 0x8B, 0x3D)
 BAR_MID = RGBColor(0xE0, 0x9B, 0x00)
 BAR_LOW = RGBColor(0x2A, 0x78, 0xD6)
-# Epic priority swatch, keyed by rank (5 = Highest … 1 = Lowest, 0 = none/unknown).
-PRIORITY_COLORS = {
-    5: RGBColor(0xC0, 0x39, 0x39),
-    4: RGBColor(0xE0, 0x9B, 0x00),
-    3: RGBColor(0x2A, 0x78, 0xD6),
-    2: RGBColor(0x53, 0x9E, 0x6B),
-    1: RGBColor(0x8A, 0x88, 0x82),
-    0: RGBColor(0xB0, 0xB0, 0xAA),
-}
+RANK_BADGE = RGBColor(0x8A, 0x88, 0x82)
 
 SLIDE_W = Inches(13.333)
 SLIDE_H = Inches(7.5)
@@ -140,22 +129,25 @@ def kpi_tile(slide, x, y, w, h, value, label, *, empty_dot=False, sub=None, valu
             _para(tf, sub, 7.5, color=TEXT_GRAY, align=PP_ALIGN.CENTER)
 
 
-def epic_row(slide, x, y, w, epic):
-    """One active-epic line: priority swatch + label, the epic name with NEW /
-    priority-change badges, and a right-aligned status (in-flight emphasized).
-    Epics are pre-sorted by priority upstream, so top-to-bottom IS priority order."""
+def epic_row(slide, x, y, w, epic, rank_pos):
+    """One active-epic line: ordinal rank badge, the epic name with NEW /
+    rank-change badges, and a right-aligned status (in-flight emphasized).
+    Epics are pre-sorted by Jira's real Rank field upstream, so top-to-bottom
+    IS the team's actual backlog order — not the (unused-default) Priority
+    field, which this row deliberately doesn't show."""
     h = Inches(0.30)
-    rank = epic.get("priority_rank", 0)
-    pri_color = PRIORITY_COLORS.get(rank, PRIORITY_COLORS[0])
-    dot_w = Inches(0.12)
+    dot_w = Inches(0.26)
     right_w = Inches(1.2)
 
-    # priority swatch (color = rank; the text label carries the exact level)
-    dot = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, x, Emu(y + Inches(0.05)), dot_w, Inches(0.2))
-    dot.fill.solid()
-    dot.fill.fore_color.rgb = pri_color
-    dot.line.fill.background()
-    dot.shadow.inherit = False
+    # ordinal rank badge (#1, #2, ... = real backlog position, not a priority level)
+    badge = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, x, Emu(y + Inches(0.03)), dot_w, Inches(0.24))
+    badge.fill.solid()
+    badge.fill.fore_color.rgb = RANK_BADGE
+    badge.line.fill.background()
+    badge.shadow.inherit = False
+    btf = _tf(badge)
+    btf.vertical_anchor = MSO_ANCHOR.MIDDLE
+    _para(btf, f"#{rank_pos}", 7.5, bold=True, color=WHITE, align=PP_ALIGN.CENTER, first=True)
 
     # name + inline badges
     name_x = Emu(x + dot_w + Inches(0.06))
@@ -166,15 +158,14 @@ def epic_row(slide, x, y, w, epic):
     tf.vertical_anchor = MSO_ANCHOR.MIDDLE
     p = tf.paragraphs[0]
     p.space_after = Pt(0)
-    _run(p, f"{epic.get('priority') or '—'}  ", 7, bold=True, color=pri_color)
     name = f"{epic.get('key', '')}: {epic.get('summary', '')}"
-    _run(p, (name[:30] + "…") if len(name) > 31 else name, 8, color=TEXT_DARK)
+    _run(p, (name[:52] + "…") if len(name) > 53 else name, 8, color=TEXT_DARK)
     if epic.get("is_new"):
         _run(p, "  NEW", 7, bold=True, color=BAR_GOOD)
-    pc = epic.get("priority_change")
-    if pc:
-        arrow = {"raised": "▲", "lowered": "▼"}.get(pc.get("direction"), "⇄")
-        _run(p, f"  {arrow}PRI", 7, bold=True, color=BAR_MID)
+    rc = epic.get("rank_change")
+    if rc:
+        arrow = "▲" if rc.get("direction") == "raised" else "▼"
+        _run(p, f"  {arrow}RANK", 7, bold=True, color=BAR_MID)
 
     # right: current status + child progress, in-flight emphasized
     rb = slide.shapes.add_textbox(Emu(x + w - right_w), y, right_w, h)
@@ -206,57 +197,6 @@ def bullets(slide, x, y, w, h, items, size=9.5):
     for i, item in enumerate(items):
         _para(tf, f"•  {item}", size, color=TEXT_DARK, first=(i == 0), space_after=5)
 
-
-def trend_chart(slide, x, y, w, h, trend, annotation):
-    counts = trend.get("counts", [])
-    labels = trend.get("week_labels", [])
-    cats = []
-    for lab in labels:
-        try:
-            cats.append(datetime.strptime(lab, "%Y-%m-%d").strftime("%-m/%-d"))
-        except ValueError:
-            cats.append(lab)
-    cd = CategoryChartData()
-    cd.categories = cats or ["—"]
-    cd.add_series("Resolved / wk", counts or [0])
-    gf = slide.shapes.add_chart(XL_CHART_TYPE.LINE_MARKERS, x, y, w, h, cd)
-    chart = gf.chart
-    chart.has_legend = False
-    chart.has_title = False
-    plot = chart.plots[0]
-    plot.series[0].format.line.color.rgb = BAR_LOW
-    for axis in (chart.category_axis, chart.value_axis):
-        axis.tick_labels.font.size = Pt(7)
-        axis.tick_labels.font.color.rgb = TEXT_GRAY
-    if annotation:
-        note = slide.shapes.add_textbox(x, Emu(y + h), w, Inches(0.4))
-        tf = _tf(note)
-        _para(tf, annotation, 7.5, color=TEXT_GRAY, first=True)
-
-
-def velocity_chart(slide, x, y, w, h, velocity):
-    """Committed vs. completed story points per closed sprint. Only called once
-    velocity_history is non-null (at least one closed sprint) — see the
-    "Awaiting data" fallback in build() for the empty case."""
-    cd = CategoryChartData()
-    cd.categories = velocity.get("sprint_labels", [])
-    cd.add_series("Committed", velocity.get("committed", []))
-    cd.add_series("Completed", velocity.get("completed", []))
-    gf = slide.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, x, y, w, h, cd)
-    chart = gf.chart
-    chart.has_legend = True
-    chart.legend.position = XL_LEGEND_POSITION.BOTTOM
-    chart.legend.include_in_layout = False
-    chart.legend.font.size = Pt(7)
-    chart.has_title = False
-    plot = chart.plots[0]
-    plot.series[0].format.fill.solid()
-    plot.series[0].format.fill.fore_color.rgb = TILE_BORDER
-    plot.series[1].format.fill.solid()
-    plot.series[1].format.fill.fore_color.rgb = BAR_LOW
-    for axis in (chart.category_axis, chart.value_axis):
-        axis.tick_labels.font.size = Pt(7)
-        axis.tick_labels.font.color.rgb = TEXT_GRAY
 
 
 def build(data: dict, narrative: dict, out_path: str) -> None:
@@ -331,49 +271,33 @@ def build(data: dict, narrative: dict, out_path: str) -> None:
         kpi_tile(slide, tx, ty, tw, th, t.get("value"), t["label"],
                  empty_dot=t.get("empty_dot", False), sub=t.get("sub"), value_size=t.get("value_size", 19))
 
-    # --- three body columns; each has a top slot and a bottom slot ---
+    # --- two body columns (throughput trend / velocity panels removed); each
+    # has a top slot and a bottom slot, split evenly across the slide width ---
     body_y = Inches(2.2)
     bottom_y = Inches(5.05)  # pushed down so a wordy Key-updates block clears Focus areas
-    lx, lw = MARGIN, Inches(4.0)
-    cx, cw = Inches(4.45), Inches(4.35)
-    rx, rw = Inches(8.95), Inches(4.08)
+    gap = Inches(0.15)
+    col_w = Emu((SLIDE_W - 2 * MARGIN - gap) // 2)
+    lx, lw = MARGIN, col_w
+    cx, cw = Emu(MARGIN + col_w + gap), col_w
 
-    # LEFT: active epics (top) + what's next (bottom). Rows are in priority order
-    # (sorted upstream); each shows in-flight status and NEW / priority-change badges.
-    y = section_header(slide, lx, body_y, lw, "Active epics — by priority")
+    # LEFT: active epics (top) + what's next (bottom). Rows are in real backlog-
+    # Rank order (sorted upstream, not Priority); each shows in-flight status
+    # and NEW / rank-change badges.
+    y = section_header(slide, lx, body_y, lw, "Active epics — by rank")
     ey = Emu(y + Inches(0.06))
-    for e in epics[:6]:
-        epic_row(slide, lx, ey, lw, e)
+    for rank_pos, e in enumerate(epics[:6], start=1):
+        epic_row(slide, lx, ey, lw, e, rank_pos)
         ey = Emu(ey + Inches(0.30))
     if narrative.get("whats_next"):
         wy = section_header(slide, lx, bottom_y, lw, "What's next")
         bullets(slide, lx, Emu(wy + Inches(0.06)), lw, Inches(2.0),
                 narrative["whats_next"], size=9)
 
-    # CENTER: key updates (top) + focus areas (directly below it)
+    # RIGHT: key updates (top) + focus areas (directly below it)
     y = section_header(slide, cx, body_y, cw, "Key updates")
     bullets(slide, cx, Emu(y + Inches(0.06)), cw, Inches(2.4), narrative.get("key_updates", []), size=9)
     fy = section_header(slide, cx, bottom_y, cw, "Focus areas")
     bullets(slide, cx, Emu(fy + Inches(0.06)), cw, Inches(2.0), narrative.get("focus_areas", []), size=9)
-
-    # RIGHT: throughput trend (top) + velocity (bottom). Velocity renders once
-    # velocity_history is non-null (jira_exec_summary.compute_sprint_stats) —
-    # i.e. at least one sprint has closed — else the "awaiting data" fallback.
-    y = section_header(slide, rx, body_y, rw, "Throughput trend")
-    trend_chart(slide, rx, Emu(y + Inches(0.06)), rw, Inches(1.9),
-                data.get("trend", {}), narrative.get("trend_annotation"))
-    vy = section_header(slide, rx, bottom_y, rw, "Velocity — story points / sprint")
-    velocity = data.get("velocity_history")
-    if velocity:
-        velocity_chart(slide, rx, Emu(vy + Inches(0.06)), rw, Inches(1.9), velocity)
-    else:
-        ph = slide.shapes.add_textbox(rx, Emu(vy + Inches(0.06)), rw, Inches(2.0))
-        tf = _tf(ph)
-        p = _para(tf, "Awaiting data — needs at least one completed sprint with "
-                      "estimated story points. No placeholder numbers shown until "
-                      "one closes.",
-                  9, color=TEXT_GRAY, first=True)
-        p.runs[0].font.italic = True
 
     # (Data-note footnote intentionally omitted from the slide — caveats still
     # live in data.json/auto_caveats for reference.)

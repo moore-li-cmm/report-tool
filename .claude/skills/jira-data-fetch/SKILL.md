@@ -38,7 +38,7 @@ throughput trend are fixed constants at the top of `fetch.py`, and it writes
   "initiative_description": "plain-text 'what/why' pulled from the initiative (AA-431) — the source for business value",
   "initiative_status": "New",
   "active_issues": [{"key": "...", "summary": "...", "status": "...", "issuetype": "...", "assignee": "..."}],
-  "recent_epics": {"linked": [{"key": "...", "summary": "...", "done": 0, "total": 0, "description": "epic goal text", "priority": "High", "priority_rank": 4, "status": "Analyzing", "in_flight": true, "is_new": false, "is_done_recent": false, "priority_change": {"from": "Low", "to": "High", "when": "2026-07-20", "direction": "raised"}}], "other": [...], "excluded": [...]},
+  "recent_epics": {"linked": [{"key": "...", "summary": "...", "done": 0, "total": 0, "description": "epic goal text", "status": "Analyzing", "in_flight": true, "is_new": false, "is_done_recent": false, "rank_change": {"when": "2026-07-20", "direction": "raised"}}], "other": [...], "excluded": [...]},
   "velocity_history": {"sprint_labels": ["Sprint 3", "Sprint 4"], "committed": [20, 24], "completed": [18, 22]},
   "epic_cycle_time": {"days": 14.0, "prior_days": 31.0, "resolved_epics": 2},
   "throughput_per_week": 1.8,
@@ -103,18 +103,23 @@ in JIRA" — never invent to fill the gap.
 
 Each epic carries, beyond `done`/`total`/`description`:
 
-- `priority` + `priority_rank` (Highest=5 … Lowest=1, unknown=0). `linked`/`other`
-  are **sorted by priority, highest first** — the list order IS priority order.
+- `linked`/`other` are **sorted by Jira's native `Rank` field** (the real,
+  team-set drag-and-drop backlog order) — the list order IS rank order. Epics
+  carry no `priority` field at all: PART's `Priority` field sits at an unused
+  default ("Lowest") on every epic and carries no signal, so ranking/ordering
+  is derived from `Rank` (`customfield_10019` on this instance, a LexoRank
+  string — sorted ascending) instead.
 - `status` + `in_flight` (`true` when the epic is in Jira's "In Progress"
   status category — actively being worked, vs "New"/not-started or Done).
 - `is_new` (`true` when the epic was created within the reporting window) and
   `is_done_recent` (`true` when the epic was resolved within the reporting
   window) — together these feed the slide's "Started epics | done (last Nd)"
   tile so both halves are genuinely time-boxed, not started-ever vs. done-ever.
-- `priority_change` — the most recent priority change within the window from
-  changelog (`{from, to, when, direction}` with direction raised/lowered/
-  changed), or `null`. When every epic shares one priority (an unused default),
-  an `auto_caveats` line flags that priority order/changes carry no real signal.
+- `rank_change` — the most recent Rank move within the window from changelog
+  (`{when, direction}` with direction `raised`/`lowered`), or `null`. Jira only
+  logs Rank changes as a bare direction ("Ranked higher"/"Ranked lower"), never
+  an absolute from/to position, so there's no `from`/`to` value to carry (unlike
+  the old priority-based version of this field).
 
 ## `pull_requests` (GitHub, optional)
 
@@ -183,7 +188,7 @@ states:
 - If you're pointing this at a different project, change `PROJECT` (and the
   window/trend constants) at the top of `fetch.py`, plus `INITIATIVE_KEY`,
   `INITIATIVE_NAME`, `EXCLUDED_STATUSES` in `jira_exec_summary.py` and
-  `SPRINT_FIELD_ID`/`STORY_POINTS_FIELD_ID` in `jira_report.py`/
+  `SPRINT_FIELD_ID`/`STORY_POINTS_FIELD_ID`/`RANK_FIELD_ID` in `jira_report.py`/
   `jira_exec_summary.py`. All three engine modules live in `scripts/`
   alongside `fetch.py`.
 

@@ -52,8 +52,8 @@ Three-stage pipeline, each stage a separate Claude Code concept:
    - `jira_exec_summary.py` — the actual stats engine (`compute_stats`):
      initiative-scoped backlog, delivery/throughput, epic cycle time (creation→
      resolution over resolved epics, with a prior-period delta), epic rollup to
-     initiative `AA-431` with per-epic priority/status/new/priority-change (via
-     changelog), blockers (via issue links), 8-week resolution trend,
+     initiative `AA-431` with per-epic Rank/status/new/done-recent/rank-change
+     (via changelog), blockers (via issue links), 8-week resolution trend,
      data-hygiene `auto_caveats`.
    - `github_prs.py` — optional GitHub PR stats (opened/merged/open, cross-linked
      to Jira keys parsed from PR title/body). Degrades to `configured: false`
@@ -119,16 +119,20 @@ user-facing entry point; it just invokes the `manager` subagent.
 - **Cycle time is epic-level** (`epic_cycle_time.days`), not per ticket. `null`
   when no epic resolved in the window — treat as n/a; with a low `resolved_epics`
   count one epic swings it.
-- **Active Epics panel** renders `recent_epics.linked` in **priority order**
-  (highest first; engine pre-sorts), each row showing an in-flight status
+- **Active Epics panel** renders `recent_epics.linked` in **real backlog-Rank
+  order** (engine pre-sorts by Jira's native `Rank` field, `customfield_10019`
+  on this instance — the team's actual drag-and-drop order), shown as an
+  ordinal `#1`/`#2`/… badge per row, each row also showing an in-flight status
   (Jira "In Progress" category, rendered as "In Progress" not the raw status
-  name) with child progress, plus **NEW** (created in-window) and
-  priority-change badges. **Every PART epic is priority "Lowest" today** (an
-  unused default, auto-caveat flagged) — the ordering and `priority_change`
-  machinery are correct but carry no real signal until priorities are set.
-  Each epic also carries `is_new`/`is_done_recent` (created/resolved within the
-  reporting window), which feed the slide's "Started epics | done (last Nd)"
-  KPI tile.
+  name) with child progress, plus **NEW** (created in-window) and rank-change
+  badges. Epics carry **no `priority` field at all** — PART's Priority sits at
+  an unused default ("Lowest") on every epic and carries no signal, which is
+  why ranking/ordering is derived from Rank instead. `rank_change` comes from
+  changelog but only ever carries a bare direction (`raised`/`lowered`) — Jira
+  logs Rank moves as "Ranked higher"/"Ranked lower" with no absolute from/to
+  position. Each epic also carries `is_new`/`is_done_recent` (created/resolved
+  within the reporting window), which feed the slide's "Started epics | done
+  (last Nd)" KPI tile.
 - `initiative_status` (AA-431's own Jira status/phase) is still computed and
   present in `data.json`, but has no dedicated slide tile. It's still available
   for the manager to reference in prose (e.g. `mission_line`) if useful.
@@ -142,8 +146,9 @@ user-facing entry point; it just invokes the `manager` subagent.
 - Retargeting this at a different Jira project means updating: `PROJECT` in
   `fetch.py`; `INITIATIVE_KEY`/`INITIATIVE_NAME`/`EXCLUDED_STATUSES` in
   `jira_exec_summary.py`; `SPRINT_FIELD_ID` in `jira_report.py`;
-  `STORY_POINTS_FIELD_ID` in `jira_exec_summary.py` (custom field IDs are
-  per-instance — re-derive both via `GET /rest/api/3/field`).
+  `STORY_POINTS_FIELD_ID`/`RANK_FIELD_ID` in `jira_exec_summary.py` (custom
+  field IDs are per-instance — re-derive via `GET /rest/api/3/field`; Rank is
+  usually named exactly "Rank", type `gh-lexo-rank`).
 
 ## Narrative-writing rules (apply when editing `manager.md` or writing `narrative.json`)
 

@@ -88,12 +88,14 @@ answer, if asked by *their* manager:
   "Epic cycle time." It's a longer-horizon signal; with few epics resolved
   (`resolved_epics`), one epic swings it — say so rather than over-reading it.
   `days` is `null` when no epic resolved in the window (report as n/a).
-- **`recent_epics.linked` is sorted by priority** (highest first) and each epic
-  carries `priority`, `in_flight`, `is_new`, and `priority_change`. The Active
-  Epics panel shows this priority order with in-flight status and NEW /
-  priority-change badges. NOTE: on PART today every epic is priority "Lowest"
-  (an unused default, flagged in `auto_caveats`) — don't present priority order
-  or "priority changes" as real signal until priorities are actually set.
+- **`recent_epics.linked` is sorted by Jira's real `Rank` field** (the team's
+  actual drag-and-drop backlog order), not Priority — epics carry no
+  `priority` field at all, since PART's Priority sits at an unused default
+  ("Lowest") on every epic and carries no signal. Each epic carries `in_flight`,
+  `is_new`, and `rank_change` (`{when, direction}` — Jira only logs a bare
+  raised/lowered direction for Rank moves, no absolute from/to). The Active
+  Epics panel shows this rank order with in-flight status and NEW /
+  rank-change badges. Don't reference "priority" for epics in prose.
 - **Business value (question 3) goes in the one-line `mission_line` at the top,
   not a panel.** Derive it from `data.initiative_description`; state it once,
   don't repeat it at length. If the description is empty, keep `mission_line`

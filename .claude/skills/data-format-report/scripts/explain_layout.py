@@ -41,25 +41,33 @@ _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..",
 OUT_PATH = os.path.join(_REPO_ROOT, "exec_summary_explainer.pptx")
 
 TILES = [
-    ("Delivery health",
-     "RAG dot. Engine default (jira_exec_summary.compute_stats -> suggested_status): "
-     "blocker present -> red 'At risk'; nothing delivered -> amber 'Watch'; else green "
-     "'On track'. Manager overrides via narrative.json delivery_health{class,label}."),
-    ("Epics started",
-     "started | total. recent_epics.linked = PART epics whose Jira parent is Initiative "
-     "AA-431 (compute_epics). 'Started' = has >=1 child ticket created."),
+    ("Project health",
+     "Deliberately blank -- an empty, uncolored circle. Never auto-computed and never "
+     "written by the manager into narrative.json; a manual fill-in for whoever presents "
+     "the slide to annotate by hand in PowerPoint. suggested_status still exists in "
+     "data.json as a naive reference signal (blocker->critical, nothing delivered->warning, "
+     "else good), but nothing here reads it."),
+    ("Started epics | done",
+     "is_new count | is_done_recent count, both over recent_epics.linked (compute_epics). "
+     "is_new = epic created within the 30-day window; is_done_recent = epic resolved within "
+     "the 30-day window. Both halves are genuinely time-boxed to the same window (sub-label)."),
     ("Backlog | delivered",
      "backlog_total = OPEN tickets whose parent epic rolls up to a real Initiative "
      "(snapshot, NOT sprint-scoped -- differs from Jira's own board Backlog panel, which "
      "excludes sprinted tickets instead). backlog_delivered = tickets RESOLVED in the last "
-     "30 days, any age. Orphan tickets are excluded and counted in auto_caveats."),
-    ("Avg epic cycle time",
+     "30 days AND whose parent epic rolls up to a real Initiative -- same scope as "
+     "backlog_total, so the two numbers reconcile. Orphan/out-of-scope tickets on either "
+     "side are excluded and counted in auto_caveats; can legitimately read 0 delivered even "
+     "when real work shipped outside the initiative's tracked epics."),
+    ("Epic cycle time",
      "Days from EPIC creation -> resolution, averaged over epics resolved in the current "
-     "30-day window (compute_epic_cycle_time). Sub-value = delta vs. the same average for "
-     "the prior 30-day window. Discard-status epics excluded; null when 0 epics resolved."),
-    ("Throughput",
-     "Non-epic, non-subtask, non-Discard tickets RESOLVED in the window / (window_days/7). "
-     "Delta vs. the same calculation for the prior 30-day window (compute_prior_period)."),
+     "30-day window (compute_epic_cycle_time). Discard-status epics excluded; null when 0 "
+     "epics resolved. No sub-value/delta shown on the tile (prior_days is in data.json for "
+     "the manager to use in prose only)."),
+    ("Stories completed",
+     "Count of data.resolved_this_period items where issuetype == 'Story' (that list is "
+     "already scoped to initiative-epic children -- see Backlog | delivered). A raw 30-day "
+     "count, not a per-week rate."),
     ("Story pts: done | WIP | total",
      "Sum of Story Points (customfield_13078) on tickets carrying the active Sprint "
      "(customfield_10020). done = resolved tickets' points; WIP = unresolved tickets whose "
@@ -69,19 +77,23 @@ TILES = [
      "GitHub PR counts via GITHUB_TOKEN/GITHUB_REPOS (github_prs.py). merged = PRs merged "
      "during the linked ticket's sprint (or last 30 days if no sprint yet); open_now = the "
      "repo's live open-PR count. PRs cross-link to Jira keys parsed from PR title/body."),
-    ("Blockers",
+    ("Flagged",
      "Count of Jira issue links typed 'is blocked by' where the blocking ticket is not in "
      "a Done-like status (Done/Closed/Resolved/Discard/Cancelled). Scanned project-wide, "
      "not just initiative-linked tickets."),
 ]
 
 LEFT_TOP = (
-    "ACTIVE EPICS -- BY PRIORITY",
+    "ACTIVE EPICS -- BY RANK",
     [
         "Source: recent_epics.linked -- epics whose Jira parent = Initiative AA-431.",
-        "Sort: priority_rank desc (Highest=5 ... Lowest=1), engine-sorted -- list order IS priority order.",
-        "Each row: priority swatch+label; NEW badge = created within the 30-day window; "
-        "up/down-PRI badge = priority changed within window (via Jira changelog); right "
+        "Sort: Jira's native Rank field (customfield_10019, LexoRank), ascending, "
+        "engine-sorted -- list order IS the team's real backlog order. Epics carry no "
+        "priority field at all: Priority sits at an unused default (\"Lowest\") on every "
+        "PART epic and carries no signal.",
+        "Each row: ordinal #N rank badge (position in the sorted list); NEW badge = created "
+        "within the 30-day window; up/down-RANK badge = Rank moved within the window (via "
+        "Jira changelog -- direction only, Jira logs no absolute from/to position); right "
         "side = status (Jira 'In Progress' category shown as 'In Progress') + done/total "
         "child tickets.",
     ],
@@ -94,7 +106,7 @@ LEFT_BOTTOM = (
         "honest timing only ('next sprint'), never a fabricated date.",
     ],
 )
-CENTER_TOP = (
+RIGHT_TOP = (
     "KEY UPDATES",
     [
         "Manually written (narrative.json -> key_updates).",
@@ -104,28 +116,14 @@ CENTER_TOP = (
         "ticket supports.",
     ],
 )
-CENTER_BOTTOM = (
+RIGHT_BOTTOM = (
     "FOCUS AREAS",
     [
         "Manually written (narrative.json -> focus_areas).",
         "Drawn from data.blocked (issue links), data.stale (open >=14 days untouched), "
         "data.overdue (past due date) -- surfaces the worst by days_since_update/days_overdue.",
-    ],
-)
-RIGHT_TOP = (
-    "THROUGHPUT TREND",
-    [
-        "8-week rolling count of tickets RESOLVED per week (compute_trend), Monday-aligned "
-        "buckets, most recent week last.",
-        "A trend direction is only claimed by the manager if >=2 non-zero weeks exist in "
-        "each half of the window.",
-    ],
-)
-RIGHT_BOTTOM = (
-    "VELOCITY -- STORY POINTS / SPRINT",
-    [
-        "Committed vs. completed Story Points per CLOSED sprint (last 6), from compute_sprint_stats.",
-        "Stays 'Awaiting data' until at least one sprint has closed -- never a placeholder/mock number.",
+        "No dedicated trend-chart panel exists -- if there's a real improvement/decline "
+        "story in data.trend, fold it in here or in key_updates instead.",
     ],
 )
 
@@ -177,18 +175,18 @@ def build(out_path: str) -> None:
         tx = Emu(MARGIN + i * (tw + gap))
         explain_tile(slide, tx, ty, tw, th, label, explanation)
 
-    # --- three body columns; each has a top slot and a bottom slot ---
+    # --- two body columns (identical geometry to format_pptx.build); each has
+    # a top slot and a bottom slot, split evenly across the slide width ---
     body_y = Inches(2.2)
     bottom_y = Inches(5.05)
-    lx, lw = MARGIN, Inches(4.0)
-    cx, cw = Inches(4.45), Inches(4.35)
-    rx, rw = Inches(8.95), Inches(4.08)
+    col_gap = Inches(0.15)
+    col_w = Emu((SLIDE_W - 2 * MARGIN - col_gap) // 2)
+    lx, lw = MARGIN, col_w
+    rx, rw = Emu(MARGIN + col_w + col_gap), col_w
 
     panel(slide, lx, body_y, lw, Inches(2.6), *LEFT_TOP)
     panel(slide, lx, bottom_y, lw, Inches(2.0), *LEFT_BOTTOM)
-    panel(slide, cx, body_y, cw, Inches(2.6), *CENTER_TOP)
-    panel(slide, cx, bottom_y, cw, Inches(2.0), *CENTER_BOTTOM)
-    panel(slide, rx, body_y, rw, Inches(1.9), *RIGHT_TOP)
+    panel(slide, rx, body_y, rw, Inches(2.6), *RIGHT_TOP)
     panel(slide, rx, bottom_y, rw, Inches(2.0), *RIGHT_BOTTOM)
 
     prs.save(out_path)

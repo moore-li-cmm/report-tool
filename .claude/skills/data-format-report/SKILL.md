@@ -35,14 +35,13 @@ One manual step, one script:
   "focus_areas": ["2-3 SHORT one-line bullets — what needs attention NOW (shares the center column with key_updates — keep tight)"],
   "whats_next": ["2-4 short bullets — the near-term deliverables/milestones coming NEXT period; forward-looking, distinct from focus_areas"],
   "extra_caveats": ["optional — anything data-quality-relevant auto_caveats didn't catch"],
-  "mission_line": "optional one-liner under the header — what this initiative is for, in plain language",
-  "trend_annotation": "optional one-liner shown next to the throughput chart"
+  "mission_line": "optional one-liner under the header — what this initiative is for, in plain language"
 }
 ```
 
-`mission_line` and `trend_annotation` are optional — **do not invent content
-for them.** If you don't have a real answer, omit the key (the renderer
-simply omits the line) rather than writing plausible-sounding filler.
+`mission_line` is optional — **do not invent content for it.** If you don't
+have a real answer, omit the key (the renderer simply omits the line) rather
+than writing plausible-sounding filler.
 
 **Two grounding rules that keep this honest — they are the whole point of
 feeding you the description text, not just counts:**
@@ -88,7 +87,7 @@ feeding you the description text, not just counts:**
 | 2 | What is the impact | `key_updates` | `resolved_this_period` (each has `description`) — what actually shipped, NOT epic goals |
 | 3 | Why is the impact valuable | `mission_line` (one-liner at the top) | From `initiative_description`; stated once up top, not repeated as a panel. The left slot hosts `whats_next` (forward outlook) |
 | 4 | Is work efficient | auto-rendered Epic cycle time / Stories completed tiles | `epic_cycle_time` (`{days, prior_days, resolved_epics}` — epic-level, not per-ticket; check `resolved_epics` before trusting a thin number), `throughput_per_week`, `prior_period`, `sprint_goal`/`velocity_history` (null until a sprint is active/closed — don't substitute a proxy silently when they are) |
-| 5 | How is the team improving | `trend_annotation` + the cycle-time/throughput deltas | `data.trend` (only claim a direction if ≥2 non-zero weeks in each half of the window — else call it too thin) and the epic-cycle-time/throughput deltas vs `prior_period` |
+| 5 | How is the team improving | fold into `key_updates`/`focus_areas` — no dedicated panel | `data.trend` (only claim a direction if ≥2 non-zero weeks in each half of the window — else call it too thin) and the epic-cycle-time/throughput deltas vs `prior_period` |
 | 6 | What's going wrong/slow | `focus_areas` + the auto-rendered Flagged KPI tile (a count only — no detail panel) | `data.blocked`/`stale`/`overdue` (surface the worst by `days_since_update`/`days_overdue` in `focus_areas` — the tile shows no detail) — if all three are empty, say "nothing blocked/stale/overdue" explicitly, don't omit the section |
 
 ## Guidance for writing good bullets
@@ -103,6 +102,11 @@ feeding you the description text, not just counts:**
   internal enablement) — call these out separately, don't blend them in.
 - **`recent_epics.excluded`** are filtered test/junk epics — don't resurrect
   them into the narrative.
+- **Epics carry no `priority` field.** The Active Epics panel orders/labels
+  by Jira's real `Rank` field (`rank_change` for recent moves), not Priority —
+  PART's Priority sits at an unused default on every epic. Don't reference
+  "priority" for epics in prose; if you want to call out an epic moving in the
+  backlog, use `rank_change`'s `direction` (raised/lowered).
 - **"Project health" is a deliberately blank tile — an empty circle with no
   computed value.** It's a manual fill-in for whoever presents the slide to
   color/annotate by hand in PowerPoint; do not write a `delivery_health` key
@@ -115,21 +119,21 @@ feeding you the description text, not just counts:**
   short/thin rather than implying a steady pace that isn't there.
 - Keep each bullet to one sentence — it becomes a bullet in a slide panel,
   not a paragraph.
-- **`key_updates` and `focus_areas` render stacked in the same center column**,
-  so keep each to ~3 short one-line bullets. The pptx shrinks text to fit if a
-  panel runs long, but tight bullets keep the type readable — don't rely on the
-  shrink to rescue a wall of text.
+- **`key_updates` and `focus_areas` render stacked in the same right-hand
+  column** (Active epics/What's-next are the left column), so keep each to
+  ~3 short one-line bullets. The pptx shrinks text to fit if a panel runs
+  long, but tight bullets keep the type readable — don't rely on the shrink to
+  rescue a wall of text.
 
 ## Implementation
 
 See `scripts/format_pptx.py` for rendering. It reads `data.json` +
-`narrative.json` from the repo root and
-produces the native, editable single-slide `.pptx` (real text boxes + a native
-chart) for sharing/hand-editing in PowerPoint before sending on. It is
-self-contained (only `python-pptx`) — it does not depend on the Jira engine or
-any HTML template. Scoped to the fields PART's Jira data supports: GitHub PR
-activity renders when configured; the Story-points KPI tile and the velocity
-chart render real numbers once `sprint_goal`/`velocity_history` are non-null
-(an active/closed sprint exists), and fall back to a "not tracked"/"awaiting
-data" placeholder otherwise — never a mock number. PRs-per-sprint grouping is
-similarly dormant until a sprint exists.
+`narrative.json` from the repo root and produces the native, editable
+single-slide `.pptx` (real text boxes/shapes — no charts; the slide is the KPI
+tile row plus two even columns) for sharing/hand-editing in PowerPoint before
+sending on. It is self-contained (only `python-pptx`) — it does not depend on
+the Jira engine or any HTML template. Scoped to the fields PART's Jira data
+supports: GitHub PR activity renders when configured; the Story-points KPI
+tile renders real numbers once `sprint_goal` is non-null (a sprint is active)
+and falls back to a "not tracked" placeholder otherwise — never a mock number.
+PRs-per-sprint grouping is similarly dormant until a sprint exists.
