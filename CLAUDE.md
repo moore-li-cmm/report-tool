@@ -116,9 +116,13 @@ user-facing entry point; it just invokes the `manager` subagent.
   shipped work landed under a non-initiative epic or an orphan ticket — that's
   the scope working as intended, not a bug; the manager should say so plainly
   rather than reporting "nothing delivered."
-- **Cycle time is epic-level** (`epic_cycle_time.days`), not per ticket. `null`
-  when no epic resolved in the window — treat as n/a; with a low `resolved_epics`
-  count one epic swings it.
+- **Cycle time is epic-level** (`epic_cycle_time.days`), not per ticket, and is
+  scoped to initiative-connected epics only — same scoping as
+  `backlog_delivered`, so an epic that doesn't roll up to a real initiative
+  can't drive this number. `null` when no *initiative* epic resolved in the
+  window — treat as n/a; with a low `resolved_epics` count one epic swings it.
+  An `auto_caveats` line names any non-initiative epic resolved in-window that
+  was excluded for this reason.
 - **Active Epics panel** renders `recent_epics.linked` in **real backlog-Rank
   order** (engine pre-sorts by Jira's native `Rank` field, `customfield_10019`
   on this instance — the team's actual drag-and-drop order), shown as an

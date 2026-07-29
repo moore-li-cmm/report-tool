@@ -91,9 +91,13 @@ in JIRA" — never invent to fill the gap.
   work items.** `{days, prior_days, resolved_epics}`: average days from creation
   to resolution for epics resolved in the window (`days`), the same for the
   prior window (`prior_days`, for a trend delta), and how many epics `days` is
-  based on (`resolved_epics`). `days`/`prior_days` are `null` when no epic
-  resolved in that window — treat as n/a. With few epics, one long/short epic
-  swings it; read `resolved_epics` before trusting the number.
+  based on (`resolved_epics`). Scoped to initiative-connected epics only — same
+  scoping as `backlog_delivered` — so an epic that doesn't roll up to a real
+  initiative can't drive this number; an `auto_caveats` line names any such
+  epic resolved in-window that was excluded. `days`/`prior_days` are `null`
+  when no *initiative* epic resolved in that window — treat as n/a. With few
+  epics, one long/short epic swings it; read `resolved_epics` before trusting
+  the number.
 - `prior_period` holds delivery metrics (`backlog_delivered`,
   `throughput_per_week`) for the window *before* this one, so throughput renders
   with a trend delta instead of a context-free number. A big swing can be

@@ -218,12 +218,14 @@ def compute_prior_period(base_url, email, token, project, since_days, initiative
     return _delivery_metrics(issues, since_days)
 
 
-def compute_epic_cycle_time(base_url, email, token, project, since_days) -> dict:
+def compute_epic_cycle_time(base_url, email, token, project, since_days, initiative_epic_keys) -> dict:
     """Average days from creation to resolution for EPICS resolved in the current
     window, plus the prior window for a trend delta. This is the headline
     "how long an epic takes end-to-end" number the slide reports as cycle time —
     a longer-horizon signal than per-ticket cycle time. Test/discarded epics are
-    excluded (they'd be a meaningless zero-effort resolution)."""
+    excluded (they'd be a meaningless zero-effort resolution), as are epics that
+    don't roll up to a real Initiative — same scoping as backlog/delivered, so
+    an epic outside the tracked initiatives can't drive this number."""
 
     def _avg(start_days: int, end_days: int) -> tuple[float | None, int]:
         jql = f"project = {project} AND issuetype = Epic AND resolutiondate >= -{start_days}d"
@@ -237,6 +239,7 @@ def compute_epic_cycle_time(base_url, email, token, project, since_days) -> dict
             ).days
             for e in epics
             if e["fields"]["status"]["name"].lower() not in EXCLUDED_STATUSES
+            and e["key"] in initiative_epic_keys
         ]
         return (round(sum(days) / len(days), 1) if days else None, len(days))
 
@@ -463,6 +466,14 @@ def compute_stats(base_url, email, token, project, since_days, trend_weeks) -> d
         keys = ", ".join(f'"{e["key"]}"' for e in epics["excluded"])
         auto_caveats.append(f"{keys} excluded from epic rollups (status indicates test/discarded data).")
 
+    non_initiative_done = [e for e in epics["other"] if e.get("is_done_recent")]
+    if non_initiative_done:
+        keys = ", ".join(f'"{e["key"]}"' for e in non_initiative_done)
+        auto_caveats.append(
+            f"Epic(s) {keys} resolved in-window but don't roll up to a real initiative — excluded "
+            "from epic_cycle_time, same scoping as backlog_delivered."
+        )
+
     if discarded_in_period:
         keys = ", ".join(f'"{i["key"]}"' for i in discarded_in_period)
         auto_caveats.append(
@@ -488,7 +499,7 @@ def compute_stats(base_url, email, token, project, since_days, trend_weeks) -> d
     )
 
     prior_period = compute_prior_period(base_url, email, token, project, since_days, initiative_epic_keys)
-    epic_cycle_time = compute_epic_cycle_time(base_url, email, token, project, since_days)
+    epic_cycle_time = compute_epic_cycle_time(base_url, email, token, project, since_days, initiative_epic_keys)
 
     # Overall DELIVERY health of the team against initiative AA-431 (a red/amber/
     # green verdict) — NOT sprint or goal status (sprint_goal is a separate field).
