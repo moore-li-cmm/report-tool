@@ -227,8 +227,7 @@ def build(data: dict, narrative: dict, out_path: str) -> None:
         # Project health: deliberately blank — a manual fill-in the presenter
         # colors/annotates by hand in PowerPoint, never auto-computed.
         {"label": "Project health", "empty_dot": True},
-        {"value": f"{epics_started} | {epics_done}", "label": "Started epics | done",
-         "sub": f"Last {since_days}d"},
+        {"value": f"{epics_started} | {epics_done}", "label": "Started epics | done"},
         {"value": f"{data.get('backlog_total',0)} | {data.get('backlog_delivered',0)}", "label": "Backlog | delivered"},
         {"value": f"{ecd if ecd is not None else 'n/a'} d", "label": "Epic cycle time"},
         {"value": f"{data.get('throughput_per_week', 0):.1f}", "label": "Throughput / wk"},
