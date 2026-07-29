@@ -235,15 +235,14 @@ def build(data: dict, narrative: dict, out_path: str) -> None:
         {"value": f"{data.get('backlog_total',0)} | {data.get('backlog_delivered',0)}", "label": "Backlog | delivered"},
         {"value": f"{ecd if ecd is not None else 'n/a'} d", "label": "Epic cycle time"},
         {"value": str(stories_completed), "label": "Stories completed"},
-        # sprint_goal is null until a sprint is active (see jira_exec_summary
-        # .compute_sprint_stats) — show real committed/completed points once one
-        # is, else the same "not tracked" placeholder (matches the velocity
-        # panel below). No mock number either way.
+        # total_completed_points (jira_exec_summary.compute_sprint_stats) sums
+        # completed points across every sprint ever run, not just the current
+        # one — stays meaningful as sprints roll over. Null only when the
+        # Sprint field has never been populated on this project.
         (
-            {"value": f"{int(sg['completed_points'])} | {int(sg.get('in_progress_points', 0))} | {int(sg['committed_points'])}",
-             "label": "Story pts: done | WIP | total", "sub": sg["name"], "value_size": 15}
-            if (sg := data.get("sprint_goal"))
-            else {"value": "—", "label": "Story points", "sub": "no active sprint"}
+            {"value": str(int(data["total_completed_points"])), "label": "Story pts completed"}
+            if data.get("total_completed_points") is not None
+            else {"value": "—", "label": "Story points", "sub": "no sprint data yet"}
         ),
         {"value": str(len(data.get("blockers", []))), "label": "Flagged"},
     ]

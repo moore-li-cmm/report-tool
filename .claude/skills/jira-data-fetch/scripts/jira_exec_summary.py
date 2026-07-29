@@ -329,7 +329,19 @@ def compute_sprint_stats(base_url, email, token, project) -> dict:
     if sprints and not any(committed.values()):
         caveats.append("Sprint field is populated but Story Points aren't estimated on any ticket yet.")
 
-    return {"sprint_goal": sprint_goal, "velocity_history": velocity_history, "caveats": caveats}
+    # Total completed points across every sprint the project has ever run
+    # (active, closed, or future) — not scoped to whichever sprint is
+    # currently active, so it doesn't reset/change meaning as sprints roll over.
+    # None (not 0) when the Sprint field has never been populated at all, so
+    # "no sprint data yet" isn't confused with "zero points completed".
+    total_completed_points = sum(completed.values()) if sprints else None
+
+    return {
+        "sprint_goal": sprint_goal,
+        "velocity_history": velocity_history,
+        "total_completed_points": total_completed_points,
+        "caveats": caveats,
+    }
 
 
 def compute_stats(base_url, email, token, project, since_days, trend_weeks) -> dict:
@@ -500,6 +512,7 @@ def compute_stats(base_url, email, token, project, since_days, trend_weeks) -> d
         "initiative_status": initiative_status,
         "sprint_goal": sprint_stats["sprint_goal"],
         "velocity_history": sprint_stats["velocity_history"],
+        "total_completed_points": sprint_stats["total_completed_points"],
         "backlog_total": backlog_total,
         "backlog_delivered": backlog_delivered,
         "epic_cycle_time": epic_cycle_time,

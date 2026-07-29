@@ -35,6 +35,7 @@ throughput trend are fixed constants at the top of `fetch.py`, and it writes
   "period_label": "Last 30 days",
   "generated_at": "...",
   "sprint_goal": {"name": "PartInt Pilot 1", "goal": null, "start_date": "...", "end_date": "...", "committed_points": 26.0, "completed_points": 0, "in_progress_points": 8.0} ,
+  "total_completed_points": 0,
   "initiative_description": "plain-text 'what/why' pulled from the initiative (AA-431) — the source for business value",
   "initiative_status": "New",
   "active_issues": [{"key": "...", "summary": "...", "status": "...", "issuetype": "...", "assignee": "..."}],
@@ -168,6 +169,13 @@ states:
   estimate a number. `auto_caveats` always states which case applies.
 - Report `throughput_per_week`/`epic_cycle_time` as the efficiency signal
   whenever these are null.
+- `total_completed_points` sums completed Story Points across **every** sprint
+  the project has ever run (active, closed, or future) — unlike `sprint_goal`,
+  it isn't scoped to whichever sprint is currently active, so it stays
+  meaningful as sprints roll over instead of resetting each cycle. It's `null`
+  only when the Sprint field has never been populated on this project at all
+  (distinct from a real `0`, which means sprints exist but nothing's resolved
+  yet).
 
 ## Project-specific knowledge baked into the underlying engine
 
