@@ -220,9 +220,6 @@ def build(data: dict, narrative: dict, out_path: str) -> None:
     epics = data.get("recent_epics", {}).get("linked", [])
     epics_started = sum(1 for e in epics if e.get("is_new"))
     epics_done = sum(1 for e in epics if e.get("is_done_recent"))
-    stories_completed = sum(
-        1 for i in data.get("resolved_this_period", []) if i.get("issuetype", "").lower() == "story"
-    )
 
     ec = data.get("epic_cycle_time") or {}
     ecd = ec.get("days")
@@ -234,7 +231,7 @@ def build(data: dict, narrative: dict, out_path: str) -> None:
          "sub": f"Last {since_days}d"},
         {"value": f"{data.get('backlog_total',0)} | {data.get('backlog_delivered',0)}", "label": "Backlog | delivered"},
         {"value": f"{ecd if ecd is not None else 'n/a'} d", "label": "Epic cycle time"},
-        {"value": str(stories_completed), "label": "Stories completed"},
+        {"value": f"{data.get('throughput_per_week', 0):.1f}", "label": "Throughput / wk"},
         # total_completed_points (jira_exec_summary.compute_sprint_stats) sums
         # completed points across every sprint ever run, not just the current
         # one — stays meaningful as sprints roll over. Null only when the
