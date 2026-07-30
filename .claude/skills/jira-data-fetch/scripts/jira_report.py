@@ -35,6 +35,19 @@ def parse_jira_date(value: str | None) -> date | None:
     return datetime.strptime(value, "%Y-%m-%d").date()
 
 
+def latest_sprint(fields: dict) -> dict | None:
+    """Pick the sprint an issue currently belongs to from its Sprint field.
+
+    The Sprint field (SPRINT_FIELD_ID) is a list — an issue accumulates every
+    sprint it has passed through — so the last dict entry is its current sprint.
+    Returns None when the field is empty or unset. Shared by fetch.py's PR-sprint
+    attribution and jira_exec_summary's velocity stats so both bucket issues by
+    sprint the same way."""
+    raw = fields.get(SPRINT_FIELD_ID) or []
+    raw = raw if isinstance(raw, list) else [raw]
+    return next((s for s in reversed(raw) if isinstance(s, dict)), None)
+
+
 def adf_to_text(node, _depth: int = 0) -> str:
     """Flatten an Atlassian Document Format (ADF) description to plain text.
 

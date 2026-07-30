@@ -34,7 +34,7 @@ throughput trend are fixed constants at the top of `fetch.py`, and it writes
   "project": "PART",
   "period_label": "Last 30 days",
   "generated_at": "...",
-  "sprint_goal": {"name": "PartInt Pilot 1", "goal": null, "start_date": "...", "end_date": "...", "committed_points": 26.0, "completed_points": 0, "in_progress_points": 8.0} ,
+  "sprint_goal": {"name": "PartInt Pilot 1", "goal": null, "start_date": "...", "end_date": "...", "committed_points": 26.0, "completed_points": 0, "in_progress_points": 8.0},
   "total_completed_points": 0,
   "initiative_description": "plain-text 'what/why' pulled from the initiative (AA-431) — the source for business value",
   "initiative_status": "New",
@@ -138,15 +138,14 @@ than failing the run.
 
 **Cross-link + sprint attribution.** Each PR carries `linked_issues` — Jira
 keys parsed from the PR title/body (the team links the ticket in the PR
-description). `by_sprint` groups PRs by the sprint of the ticket they link to,
-and `current_sprint` is the active (or latest) sprint. Today PART has no sprint
-field populated, so `current_sprint` is `null` and everything falls into a
-`"(no sprint)"` bucket with `opened`/`merged` counts for the 30-day window
-(a caveat flags this). The moment the sprint field is set, PRs group by sprint
-automatically — no code change. The pptx tile shows "merged in
-window | open now" (e.g. `10 | 3`) — deliberately *not* "opened", since
-created-in-window collides with currently-open and misleads readers; `open_now`
-reconciles with the repo's open-PR count. Sprint-scoped once a sprint exists.
+description). `by_sprint` groups PRs by the sprint of the ticket they link to;
+`current_sprint` is the active (or latest) sprint. A PR whose linked ticket has
+no sprint set falls into a `"(no sprint)"` bucket over the 30-day window (a
+caveat flags this), and groups by sprint automatically once that ticket carries
+one — no code change. The pptx tile shows "merged in window | open now" (e.g.
+`10 | 3`) — deliberately *not* "opened", since created-in-window collides with
+currently-open and misleads readers; `open_now` reconciles with the repo's
+open-PR count.
 
 ## `sprint_goal` and `velocity_history`
 

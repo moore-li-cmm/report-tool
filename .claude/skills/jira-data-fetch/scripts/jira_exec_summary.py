@@ -15,7 +15,14 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from datetime import date, datetime, timedelta, timezone
 
-from jira_report import SPRINT_FIELD_ID, adf_to_text, fetch_changelog, fetch_issues, parse_jira_datetime
+from jira_report import (
+    SPRINT_FIELD_ID,
+    adf_to_text,
+    fetch_changelog,
+    fetch_issues,
+    latest_sprint,
+    parse_jira_datetime,
+)
 
 # Confirmed via /rest/api/3/field on this instance: "Story Points" (distinct
 # from the unused "Story point estimate", customfield_10016). Other projects
@@ -30,7 +37,7 @@ STORY_POINTS_FIELD_ID = "customfield_13078"
 # may use a different ID.
 RANK_FIELD_ID = "customfield_10019"
 
-# How many closed sprints to show in the velocity history chart.
+# How many closed sprints to include in velocity_history.
 MAX_VELOCITY_SPRINTS = 6
 
 # Confirmed empirically (see conversation): PART epics roll up to this
@@ -48,6 +55,13 @@ DONE_STATUS_NAMES = {"done", "closed", "resolved", "discard", "cancelled", "canc
 
 def search(base_url, email, token, jql, fields):
     return fetch_issues(base_url, email, token, jql, fields=fields)
+
+
+def _under_initiative(issue: dict, epic_keys: set[str]) -> bool:
+    """True if the issue's parent epic rolls up to a tracked initiative — the
+    scoping rule shared by backlog_total, backlog_delivered, and prior_period,
+    so all three reconcile against the same set of work."""
+    return (issue["fields"].get("parent") or {}).get("key") in epic_keys
 
 
 # ---------------------------------------------------------------------------
@@ -214,7 +228,7 @@ def compute_prior_period(base_url, email, token, project, since_days, initiative
         f"AND resolutiondate >= -{2 * since_days}d AND resolutiondate < -{since_days}d"
     )
     issues = search(base_url, email, token, jql, ["resolutiondate", "parent"])
-    issues = [i for i in issues if (i["fields"].get("parent") or {}).get("key") in initiative_epic_keys]
+    issues = [i for i in issues if _under_initiative(i, initiative_epic_keys)]
     return _delivery_metrics(issues, since_days)
 
 
@@ -262,17 +276,14 @@ def compute_sprint_stats(base_url, email, token, project) -> dict:
         [SPRINT_FIELD_ID, STORY_POINTS_FIELD_ID, "resolutiondate", "status"],
     )
 
-    # A sprint field is a list (an issue can pass through multiple sprints as it
-    # moves) — attribute each issue to the LAST sprint it was in, same
-    # convention fetch.py's PR-sprint attribution uses.
+    # latest_sprint() attributes each issue to the last sprint it was in — the
+    # same rule fetch.py's PR-sprint attribution uses.
     sprints: dict[int, dict] = {}
     committed: dict[int, float] = defaultdict(float)
     completed: dict[int, float] = defaultdict(float)
     in_progress: dict[int, float] = defaultdict(float)
     for i in issues:
-        raw = i["fields"].get(SPRINT_FIELD_ID) or []
-        raw = raw if isinstance(raw, list) else [raw]
-        chosen = next((s for s in reversed(raw) if isinstance(s, dict)), None)
+        chosen = latest_sprint(i["fields"])
         if not chosen:
             continue
         sid = chosen.get("id")
@@ -361,10 +372,7 @@ def compute_stats(base_url, email, token, project, since_days, trend_weeks) -> d
         f"project = {project} AND statusCategory != Done AND {_WORKITEM_FILTER}",
         ["issuetype", "assignee", "priority", "created", "updated", "status", "summary", "parent"],
     )
-    open_issues = [
-        i for i in open_all
-        if (i["fields"].get("parent") or {}).get("key") in initiative_epic_keys
-    ]
+    open_issues = [i for i in open_all if _under_initiative(i, initiative_epic_keys)]
     backlog_total = len(open_issues)
     backlog_excluded = len(open_all) - backlog_total
 
@@ -378,10 +386,7 @@ def compute_stats(base_url, email, token, project, since_days, trend_weeks) -> d
         f"project = {project} AND {_WORKITEM_FILTER} AND resolutiondate >= -{since_days}d",
         ["issuetype", "resolutiondate", "summary", "description", "parent"],
     )
-    resolved_in_period = [
-        i for i in resolved_in_period_all
-        if (i["fields"].get("parent") or {}).get("key") in initiative_epic_keys
-    ]
+    resolved_in_period = [i for i in resolved_in_period_all if _under_initiative(i, initiative_epic_keys)]
     resolved_excluded = len(resolved_in_period_all) - len(resolved_in_period)
     delivery = _delivery_metrics(resolved_in_period, since_days)
     backlog_delivered = delivery["backlog_delivered"]

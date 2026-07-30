@@ -24,7 +24,7 @@ from datetime import date
 from dotenv import load_dotenv
 
 from jira_exec_summary import compute_stats, search
-from jira_report import SPRINT_FIELD_ID, JiraAuthError, parse_jira_date, verify_auth
+from jira_report import SPRINT_FIELD_ID, JiraAuthError, latest_sprint, parse_jira_date, verify_auth
 from github_prs import DEFAULT_API_URL, fetch_pr_stats
 
 # Repo root is four levels up (scripts/ -> jira-data-fetch/ -> skills/ -> .claude/);
@@ -38,7 +38,7 @@ TREND_WEEKS = 8
 OUT_PATH = os.path.join(_REPO_ROOT, "data.json")
 
 
-def _attach_sprint_attribution(pr: dict, base_url, email, token, project, since_days) -> None:
+def _attach_sprint_attribution(pr: dict, base_url, email, token) -> None:
     """Group the fetched PRs by the sprint of the Jira ticket each one links to.
 
     PRs link their ticket in the PR body (parsed into `linked_issues` upstream).
@@ -52,9 +52,7 @@ def _attach_sprint_attribution(pr: dict, base_url, email, token, project, since_
     if keys:
         jql = "key in (%s)" % ",".join(keys)
         for iss in search(base_url, email, token, jql, [SPRINT_FIELD_ID]):
-            raw = iss["fields"].get(SPRINT_FIELD_ID) or []
-            raw = raw if isinstance(raw, list) else [raw]
-            chosen = next((s for s in reversed(raw) if isinstance(s, dict)), None)
+            chosen = latest_sprint(iss["fields"])
             if chosen:
                 issue_sprint[iss["key"]] = chosen.get("name")
                 sprints[chosen.get("name")] = {
@@ -161,7 +159,7 @@ def build_contract(base_url: str, email: str, token: str, project: str, since_da
         pr = fetch_pr_stats(gh_api, gh_token, gh_repos, since_days, project)
         stats["pull_requests"] = pr
         if pr.get("configured"):
-            _attach_sprint_attribution(pr, base_url, email, token, project, since_days)
+            _attach_sprint_attribution(pr, base_url, email, token)
             if not pr.get("sprints"):
                 stats["auto_caveats"].append(
                     f"No Jira sprint is set on the PR-linked issues yet — PR counts are the "
