@@ -17,27 +17,29 @@ from __future__ import annotations
 import os
 
 from pptx import Presentation
-from pptx.dml.color import RGBColor
-from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import MSO_ANCHOR, MSO_AUTO_SIZE
-from pptx.util import Emu, Inches, Pt
+from pptx.util import Emu, Inches
 
 from format_pptx import (
+    BODY_Y,
+    BOTTOM_Y,
     HEADER_GREEN,
     MARGIN,
     SLIDE_H,
     SLIDE_W,
-    TEXT_DARK,
     TEXT_GRAY,
-    TILE_BORDER,
-    WHITE,
+    TILE_ROW_H,
+    TILE_ROW_Y,
     _para,
+    _REPO_ROOT,
     _tf,
+    body_columns,
     bullets,
     section_header,
+    tile_card,
+    tile_row_geometry,
 )
 
-_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
 OUT_PATH = os.path.join(_REPO_ROOT, "exec_summary_explainer.pptx")
 
 TILES = [
@@ -129,13 +131,7 @@ RIGHT_BOTTOM = (
 
 
 def explain_tile(slide, x, y, w, h, label, explanation):
-    tile = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, x, y, w, h)
-    tile.fill.solid()
-    tile.fill.fore_color.rgb = WHITE
-    tile.line.color.rgb = TILE_BORDER
-    tile.line.width = Pt(1.5)
-    tile.shadow.inherit = False
-    tf = _tf(tile)
+    tf = tile_card(slide, x, y, w, h)
     tf.vertical_anchor = MSO_ANCHOR.TOP
     tf.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
     _para(tf, label.upper(), 7.5, bold=True, color=HEADER_GREEN, first=True, space_after=1)
@@ -164,25 +160,21 @@ def build(out_path: str) -> None:
               "explain_layout.py whenever the pipeline's field definitions change.",
           9, color=TEXT_GRAY, first=True)
 
-    # --- KPI tile row (identical geometry to format_pptx.build) ---
+    # --- KPI tile row (shared geometry from format_pptx) ---
     n = len(TILES)
-    gap = Inches(0.12)
-    usable = SLIDE_W - 2 * MARGIN - (n - 1) * gap
-    tw = Emu(usable // n)
-    ty = Inches(1.05)
-    th = Inches(0.92)
+    tw, gap = tile_row_geometry(n)
+    ty = TILE_ROW_Y
+    th = TILE_ROW_H
     for i, (label, explanation) in enumerate(TILES):
         tx = Emu(MARGIN + i * (tw + gap))
         explain_tile(slide, tx, ty, tw, th, label, explanation)
 
-    # --- two body columns (identical geometry to format_pptx.build); each has
-    # a top slot and a bottom slot, split evenly across the slide width ---
-    body_y = Inches(2.2)
-    bottom_y = Inches(5.05)
-    col_gap = Inches(0.15)
-    col_w = Emu((SLIDE_W - 2 * MARGIN - col_gap) // 2)
-    lx, lw = MARGIN, col_w
-    rx, rw = Emu(MARGIN + col_w + col_gap), col_w
+    # --- two body columns (shared geometry from format_pptx); each has a top
+    # slot and a bottom slot, split evenly across the slide width ---
+    body_y = BODY_Y
+    bottom_y = BOTTOM_Y
+    lx, rx, col_w = body_columns()
+    lw = rw = col_w
 
     panel(slide, lx, body_y, lw, Inches(2.6), *LEFT_TOP)
     panel(slide, lx, bottom_y, lw, Inches(2.0), *LEFT_BOTTOM)

@@ -76,8 +76,8 @@ Three-stage pipeline, each stage a separate Claude Code concept:
 
 3. **`data-format-report` skill** (`.claude/skills/data-format-report/scripts/format_pptx.py`)
    — pure rendering. Merges `data.json` + `narrative.json` into a native,
-   editable single-slide `.pptx` (real shapes/text boxes/a native chart via
-   `python-pptx`) — self-contained, no dependency on the Jira engine.
+   editable single-slide `.pptx` (real shapes/text boxes via `python-pptx`, no
+   chart) — self-contained, no dependency on the Jira engine.
 
 The `/weekly-report` slash command (`.claude/commands/weekly-report.md`) is the
 user-facing entry point; it just invokes the `manager` subagent.
@@ -103,8 +103,7 @@ user-facing entry point; it just invokes the `manager` subagent.
   active but no goal set", "no completed sprint yet"). Report
   `throughput_per_week`/`epic_cycle_time` instead whenever these are null;
   never fabricate a velocity number. No code change is needed as the sprint
-  moves through states — this was previously hardcoded to `null`
-  unconditionally, which is why it looked frozen even after a sprint existed.
+  moves through states.
 - **Backlog is initiative-scoped**: `backlog_total` counts only open tickets
   whose parent epic rolls up to a real Initiative; orphan tickets are excluded
   (a caveat reports how many). It intentionally won't match the board's raw

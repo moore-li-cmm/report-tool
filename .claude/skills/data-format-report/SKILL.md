@@ -17,8 +17,8 @@ One manual step, one script:
    jira-data-fetch. This is the step a script can't do; it's why this is a skill
    instead of a fixed template.
 2. **`scripts/format_pptx.py`** — merges `data.json` + `narrative.json` into
-   the final native, editable single-slide `.pptx` (real text boxes + a
-   native chart). No arguments: it reads both JSON files from the repo root and
+   the final native, editable single-slide `.pptx` (real text boxes/shapes, no
+   chart). No arguments: it reads both JSON files from the repo root and
    writes `exec_summary.pptx` there.
 
 ```bash
@@ -43,8 +43,7 @@ One manual step, one script:
 have a real answer, omit the key (the renderer simply omits the line) rather
 than writing plausible-sounding filler.
 
-**Two grounding rules that keep this honest — they are the whole point of
-feeding you the description text, not just counts:**
+**Grounding rules that keep this honest:**
 
 - **Business value goes in the one-line `mission_line`, not a panel.** Derive
   it from `data.initiative_description` and state it once at the top — don't

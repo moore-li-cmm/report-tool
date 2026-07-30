@@ -3,8 +3,8 @@
 
 Takes data.json + narrative.json and produces a slide meant to be shared and
 hand-tweaked in PowerPoint/Keynote/Google Slides before sending on. Everything
-is real text boxes / shapes / a native chart, so it edits like any normal
-slide. Self-contained: only python-pptx, no Jira engine or HTML template.
+is real text boxes / shapes, so it edits like any normal slide.
+Self-contained: only python-pptx, no Jira engine or HTML template.
 
 Layout follows the Innova "Executive Summary" format: a KPI tile row, then two
 even columns — Active epics + What's-next (left) and Key updates + Focus areas
@@ -42,6 +42,28 @@ RANK_BADGE = RGBColor(0x8A, 0x88, 0x82)
 SLIDE_W = Inches(13.333)
 SLIDE_H = Inches(7.5)
 MARGIN = Inches(0.3)
+
+# --- shared slide geometry (single source of truth) ------------------------
+# explain_layout.py imports these so its reference slide can't silently drift
+# from the real layout this module renders.
+TILE_ROW_Y = Inches(1.05)
+TILE_ROW_H = Inches(0.92)
+TILE_GAP = Inches(0.12)
+BODY_Y = Inches(2.2)
+BOTTOM_Y = Inches(5.05)   # pushed down so a wordy Key-updates block clears Focus areas
+COL_GAP = Inches(0.15)
+
+
+def tile_row_geometry(n):
+    """(tile_width, gap) for a row of n evenly-spaced KPI tiles across the slide."""
+    usable = SLIDE_W - 2 * MARGIN - (n - 1) * TILE_GAP
+    return Emu(usable // n), TILE_GAP
+
+
+def body_columns():
+    """(left_x, right_x, col_width) for the two even body columns."""
+    col_w = Emu((SLIDE_W - 2 * MARGIN - COL_GAP) // 2)
+    return MARGIN, Emu(MARGIN + col_w + COL_GAP), col_w
 
 # Repo root is four levels up (scripts/ -> data-format-report/ -> skills/ -> .claude/).
 # The pipeline reads data.json + narrative.json and writes exec_summary.pptx there.
@@ -99,14 +121,21 @@ def section_header(slide, x, y, w, text):
     return Emu(y + h)
 
 
-def kpi_tile(slide, x, y, w, h, value, label, *, empty_dot=False, sub=None, value_size=19):
+def tile_card(slide, x, y, w, h):
+    """A styled tile card — rounded white rect, green border, no shadow —
+    returning its text frame. Shared chrome for the real slide (kpi_tile) and
+    the explainer (explain_layout.explain_tile) so a restyle touches one place."""
     tile = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, x, y, w, h)
     tile.fill.solid()
     tile.fill.fore_color.rgb = WHITE
     tile.line.color.rgb = TILE_BORDER
     tile.line.width = Pt(1.5)
     tile.shadow.inherit = False
-    tf = _tf(tile)
+    return _tf(tile)
+
+
+def kpi_tile(slide, x, y, w, h, value, label, *, empty_dot=False, sub=None, value_size=19):
+    tf = tile_card(slide, x, y, w, h)
     tf.vertical_anchor = MSO_ANCHOR.MIDDLE
     if empty_dot:
         # Deliberately blank: an unfilled circle for whoever presents the slide
@@ -256,11 +285,9 @@ def build(data: dict, narrative: dict, out_path: str) -> None:
                    {"value": f"{pr.get('merged_in_window', 0)} | {open_now}", "label": f"PRs merged {since_days}d | open now"})
         tiles.insert(len(tiles) - 1, pr_tile)  # just before Flagged
     n = len(tiles)
-    gap = Inches(0.12)
-    usable = SLIDE_W - 2 * MARGIN - (n - 1) * gap
-    tw = Emu(usable // n)
-    ty = Inches(1.05)
-    th = Inches(0.92)
+    tw, gap = tile_row_geometry(n)
+    ty = TILE_ROW_Y
+    th = TILE_ROW_H
     for i, t in enumerate(tiles):
         tx = Emu(MARGIN + i * (tw + gap))
         kpi_tile(slide, tx, ty, tw, th, t.get("value"), t["label"],
@@ -268,12 +295,10 @@ def build(data: dict, narrative: dict, out_path: str) -> None:
 
     # --- two body columns (throughput trend / velocity panels removed); each
     # has a top slot and a bottom slot, split evenly across the slide width ---
-    body_y = Inches(2.2)
-    bottom_y = Inches(5.05)  # pushed down so a wordy Key-updates block clears Focus areas
-    gap = Inches(0.15)
-    col_w = Emu((SLIDE_W - 2 * MARGIN - gap) // 2)
-    lx, lw = MARGIN, col_w
-    cx, cw = Emu(MARGIN + col_w + gap), col_w
+    body_y = BODY_Y
+    bottom_y = BOTTOM_Y
+    lx, cx, col_w = body_columns()
+    lw = cw = col_w
 
     # LEFT: active epics (top) + what's next (bottom). Rows are in real backlog-
     # Rank order (sorted upstream, not Priority); each shows in-flight status
