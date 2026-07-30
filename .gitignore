@@ -12,8 +12,10 @@ __pycache__/
 # never hand-edited source. Keep the repo to just the pipeline code.
 data.json
 narrative.json
-exec_summary.pptx
-exec_summary_explainer.pptx
+exec_summary*.pptx
+exec_summary*.html
+analysis.json
+stats.json
 
 # Local Claude Code settings (machine-specific permission overrides)
 .claude/settings.local.json
