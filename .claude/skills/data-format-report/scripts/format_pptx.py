@@ -269,7 +269,7 @@ def build(data: dict, narrative: dict, out_path: str) -> None:
             if data.get("total_completed_points") is not None
             else {"value": "—", "label": "Story points", "sub": "no sprint data yet"}
         ),
-        {"value": str(len(data.get("blockers", []))), "label": "Flagged"},
+        {"value": str(len(data.get("flagged", []))), "label": "Flagged"},
     ]
     pr = data.get("pull_requests") or {}
     if pr.get("configured"):

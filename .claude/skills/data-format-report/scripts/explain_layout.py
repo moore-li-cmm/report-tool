@@ -47,7 +47,7 @@ TILES = [
      "Deliberately blank -- an empty, uncolored circle. Never auto-computed and never "
      "written by the manager into narrative.json; a manual fill-in for whoever presents "
      "the slide to annotate by hand in PowerPoint. suggested_status still exists in "
-     "data.json as a naive reference signal (blocker->critical, nothing delivered->warning, "
+     "data.json as a naive reference signal (flagged->critical, nothing delivered->warning, "
      "else good), but nothing here reads it."),
     ("Started epics | done",
      "is_new count | is_done_recent count, both over recent_epics.linked (compute_epics). "
@@ -80,9 +80,10 @@ TILES = [
      "during the linked ticket's sprint (or last 30 days if no sprint yet); open_now = the "
      "repo's live open-PR count. PRs cross-link to Jira keys parsed from PR title/body."),
     ("Flagged",
-     "Count of Jira issue links typed 'is blocked by' where the blocking ticket is not in "
-     "a Done-like status (Done/Closed/Resolved/Discard/Cancelled). Scanned project-wide, "
-     "not just initiative-linked tickets."),
+     "Count of issues carrying Jira's native Flagged/Impediment field (customfield_10021 on "
+     "this instance) whose own status is not Done-like (Done/Closed/Resolved/Discard/"
+     "Cancelled). Same signal as the flag icon on the board. Scanned project-wide, not just "
+     "initiative-linked tickets."),
 ]
 
 LEFT_TOP = (
@@ -122,7 +123,7 @@ RIGHT_BOTTOM = (
     "FOCUS AREAS",
     [
         "Manually written (narrative.json -> focus_areas).",
-        "Drawn from data.blocked (issue links), data.stale (open >=14 days untouched), "
+        "Drawn from data.flagged (Jira's native Flag/Impediment field), data.stale (open >=14 days untouched), "
         "data.overdue (past due date) -- surfaces the worst by days_since_update/days_overdue.",
         "No dedicated trend-chart panel exists -- if there's a real improvement/decline "
         "story in data.trend, fold it in here or in key_updates instead.",

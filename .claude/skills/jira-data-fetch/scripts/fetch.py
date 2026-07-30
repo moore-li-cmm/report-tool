@@ -129,7 +129,7 @@ def build_contract(base_url: str, email: str, token: str, project: str, since_da
     # compute_stats already returns: project, since_days, period_label, generated_at,
     # initiative_key, initiative_name, initiative_description, backlog_total,
     # backlog_delivered, epic_cycle_time, throughput_per_week, prior_period,
-    # epics, blockers, trend, stale_tickets, resolved_this_period,
+    # epics, flagged, trend, stale_tickets, resolved_this_period,
     # priority_breakdown, assignee_breakdown, auto_caveats, suggested_status.
     stats = compute_stats(base_url, email, token, project, since_days, trend_weeks)
 
@@ -138,8 +138,7 @@ def build_contract(base_url: str, email: str, token: str, project: str, since_da
 
     # Aliases matching the six-category contract in SKILL.md, without dropping the
     # original keys — data-format-report's format_pptx.py reads a mix of both
-    # (e.g. `blockers` original, `recent_epics` alias).
-    stats["blocked"] = stats["blockers"]
+    # (e.g. `flagged` original, `recent_epics` alias).
     stats["stale"] = stats["stale_tickets"]
     stats["recent_epics"] = stats["epics"]
 

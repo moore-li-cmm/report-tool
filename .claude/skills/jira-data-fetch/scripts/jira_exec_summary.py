@@ -37,6 +37,11 @@ STORY_POINTS_FIELD_ID = "customfield_13078"
 # may use a different ID.
 RANK_FIELD_ID = "customfield_10019"
 
+# Jira's native Flagged/Impediment field (multicheckboxes, value "Impediment")
+# — the same marker that shows as the flag icon on the board/backlog. The JQL
+# keyword "flagged" resolves to this field regardless of its customfield ID.
+FLAGGED_FIELD_ID = "customfield_10021"
+
 # How many closed sprints to include in velocity_history.
 MAX_VELOCITY_SPRINTS = 6
 
@@ -155,22 +160,20 @@ def compute_epics(base_url, email, token, project, since_days) -> dict:
     }
 
 
-def compute_blockers(base_url, email, token, project) -> list[dict]:
-    issues = search(base_url, email, token, f"project = {project}", ["issuelinks"])
-    blockers = []
-    for issue in issues:
-        for link in issue["fields"].get("issuelinks") or []:
-            other = link.get("outwardIssue") or link.get("inwardIssue")
-            if not other:
-                continue
-            direction = "outward" if "outwardIssue" in link else "inward"
-            phrase = link["type"].get(direction) or ""
-            other_status = other["fields"]["status"]["name"]
-            if phrase.lower() == "is blocked by" and other_status.lower() not in DONE_STATUS_NAMES:
-                blockers.append(
-                    {"issue": issue["key"], "blocked_by": other["key"], "blocked_by_status": other_status}
-                )
-    return blockers
+def compute_flagged(base_url, email, token, project) -> list[dict]:
+    """Issues carrying Jira's native Flagged/Impediment marker — the same signal
+    the flag icon on the board/backlog shows. Excludes issues whose own status
+    is already Done/Discarded (a stale flag left on closed work isn't a live risk)."""
+    issues = search(
+        base_url, email, token,
+        f"project = {project} AND flagged is not EMPTY",
+        ["summary", "status"],
+    )
+    return [
+        {"issue": i["key"], "summary": i["fields"].get("summary", ""), "status": i["fields"]["status"]["name"]}
+        for i in issues
+        if i["fields"]["status"]["name"].lower() not in DONE_STATUS_NAMES
+    ]
 
 
 def compute_trend(base_url, email, token, project, weeks: int) -> dict:
@@ -488,7 +491,7 @@ def compute_stats(base_url, email, token, project, since_days, trend_weeks) -> d
             "throughput_per_week — not counted as real delivery."
         )
 
-    blockers = compute_blockers(base_url, email, token, project)
+    flagged = compute_flagged(base_url, email, token, project)
     trend = compute_trend(base_url, email, token, project, trend_weeks)
 
     # Business-value source text lives on the initiative, not in any PART issue.
@@ -510,8 +513,8 @@ def compute_stats(base_url, email, token, project, since_days, trend_weeks) -> d
     # green verdict) — NOT sprint or goal status (sprint_goal is a separate field).
     # The label states the reason so red/amber is never unexplained. Naive default;
     # the manager can override class+label from the fuller picture.
-    if blockers:
-        suggested_status = {"class": "dot--critical", "label": "At risk: active blocker"}
+    if flagged:
+        suggested_status = {"class": "dot--critical", "label": "At risk: ticket flagged in Jira"}
     elif backlog_delivered == 0:
         suggested_status = {"class": "dot--warning", "label": "Watch: nothing delivered this period"}
     else:
@@ -535,7 +538,7 @@ def compute_stats(base_url, email, token, project, since_days, trend_weeks) -> d
         "throughput_per_week": throughput_per_week,
         "prior_period": prior_period,
         "epics": epics,
-        "blockers": blockers,
+        "flagged": flagged,
         "trend": trend,
         "stale_tickets": stale,
         "resolved_this_period": resolved_summaries,

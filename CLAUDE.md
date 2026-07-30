@@ -53,7 +53,8 @@ Three-stage pipeline, each stage a separate Claude Code concept:
      initiative-scoped backlog, delivery/throughput, epic cycle time (creation→
      resolution over resolved epics, with a prior-period delta), epic rollup to
      initiative `AA-431` with per-epic Rank/status/new/done-recent/rank-change
-     (via changelog), blockers (via issue links), 8-week resolution trend,
+     (via changelog), flagged tickets (Jira's native Flag/Impediment field,
+     not issue links), 8-week resolution trend,
      data-hygiene `auto_caveats`.
    - `github_prs.py` — optional GitHub PR stats (opened/merged/open, cross-linked
      to Jira keys parsed from PR title/body). Degrades to `configured: false`
@@ -143,7 +144,7 @@ user-facing entry point; it just invokes the `manager` subagent.
   circle for whoever presents the slide to annotate by hand in PowerPoint. It
   is never auto-computed from `data.json` or written by the manager into
   `narrative.json`; `format_pptx.py` doesn't read a status value for it at all.
-  `suggested_status` (`{class, label}`: blocker→critical, nothing
+  `suggested_status` (`{class, label}`: flagged→critical, nothing
   delivered→warning, else good) still exists in `data.json` as a naive
   reference signal the manager may mention in prose, but it drives no tile.
 - Retargeting this at a different Jira project means updating: `PROJECT` in

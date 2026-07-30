@@ -37,7 +37,7 @@ The slide's "Project health" tile is a blank, empty circle — a manual fill-in
 for whoever presents the slide to color/annotate by hand in PowerPoint. Do not
 write a `delivery_health` key or otherwise try to compute a value for it;
 `format_pptx.py` doesn't read one, so it's a no-op. `data.suggested_status`
-still exists in `data.json` as a naive reference signal (blocker→critical,
+still exists in `data.json` as a naive reference signal (flagged→critical,
 nothing delivered→warning, else good) — you can mention it in prose if useful,
 but nothing in `narrative.json` drives this tile.
 
@@ -138,7 +138,7 @@ all fixed.
    ```
    Writes `data.json` (PART, last 30 days).
 2. Read `data.json`. Sanity-check it: if a category comes back empty (e.g.
-   no blocked issues), that's a real signal to state ("nothing blocked"),
+   no flagged issues), that's a real signal to state ("nothing flagged"),
    not a section to skip.
 3. **Write `narrative.json` yourself** — this is the actual analysis step, not a
    script's job. Follow the six-question → field mapping and bullet-writing

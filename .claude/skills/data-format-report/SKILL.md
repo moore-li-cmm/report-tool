@@ -87,7 +87,7 @@ than writing plausible-sounding filler.
 | 3 | Why is the impact valuable | `mission_line` (one-liner at the top) | From `initiative_description`; stated once up top, not repeated as a panel. The left slot hosts `whats_next` (forward outlook) |
 | 4 | Is work efficient | auto-rendered Epic cycle time / Stories completed tiles | `epic_cycle_time` (`{days, prior_days, resolved_epics}` — epic-level, not per-ticket; check `resolved_epics` before trusting a thin number), `throughput_per_week`, `prior_period`, `sprint_goal`/`velocity_history` (null until a sprint is active/closed — don't substitute a proxy silently when they are) |
 | 5 | How is the team improving | fold into `key_updates`/`focus_areas` — no dedicated panel | `data.trend` (only claim a direction if ≥2 non-zero weeks in each half of the window — else call it too thin) and the epic-cycle-time/throughput deltas vs `prior_period` |
-| 6 | What's going wrong/slow | `focus_areas` + the auto-rendered Flagged KPI tile (a count only — no detail panel) | `data.blocked`/`stale`/`overdue` (surface the worst by `days_since_update`/`days_overdue` in `focus_areas` — the tile shows no detail) — if all three are empty, say "nothing blocked/stale/overdue" explicitly, don't omit the section |
+| 6 | What's going wrong/slow | `focus_areas` + the auto-rendered Flagged KPI tile (a count only — no detail panel) | `data.flagged`/`stale`/`overdue` (`flagged` is Jira's native Flag/Impediment field, not an issue-link relationship; surface the worst by `days_since_update`/`days_overdue` in `focus_areas` — the tile shows no detail) — if all three are empty, say "nothing flagged/stale/overdue" explicitly, don't omit the section |
 
 ## Guidance for writing good bullets
 
@@ -111,7 +111,7 @@ than writing plausible-sounding filler.
   color/annotate by hand in PowerPoint; do not write a `delivery_health` key
   or otherwise try to compute a status for it — `format_pptx.py` doesn't read
   one. `data.suggested_status` still exists in `data.json` as a naive
-  reference signal (blocker→critical, nothing delivered→warning, else good) if
+  reference signal (flagged→critical, nothing delivered→warning, else good) if
   you want to mention it in prose, but nothing in the narrative drives the tile.
 - **Thin trends are worth flagging, not smoothing over** — if `data.trend`
   has fewer than two non-zero weeks in each half, say the window is too

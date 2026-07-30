@@ -3,7 +3,7 @@ name: jira-data-fetch
 description: >-
   Fetches structured Jira data for status reporting on the PART project —
   active issues, epic/initiative rollup, throughput trend, cycle time,
-  blocked/stale/overdue issues. Wraps the project's existing Jira API layer
+  flagged/stale/overdue issues. Wraps the project's existing Jira API layer
   (jira_report.py, jira_exec_summary.py) rather than reimplementing it. Use
   as the first step of building a status report, alongside data-format-report
   and the manager subagent.
@@ -46,7 +46,7 @@ throughput trend are fixed constants at the top of `fetch.py`, and it writes
   "prior_period": {"backlog_delivered": 5, "throughput_per_week": 1.2},
   "trend": {"week_labels": [...], "counts": [...]},
   "resolved_this_period": [{"key": "...", "summary": "...", "issuetype": "...", "description": "what actually shipped"}],
-  "blocked": [{"issue": "...", "blocked_by": "...", "blocked_by_status": "..."}],
+  "flagged": [{"issue": "...", "summary": "...", "status": "..."}],
   "stale": [{"key": "...", "summary": "...", "days_since_update": 21}],
   "overdue": [{"key": "...", "summary": "...", "duedate": "...", "days_overdue": 5}],
   "pull_requests": {"configured": true, "opened_in_window": 6, "merged_in_window": 3, "open_now": 2,
