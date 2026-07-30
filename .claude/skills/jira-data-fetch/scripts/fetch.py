@@ -34,7 +34,6 @@ _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..",
 # Fixed reporting scope: this tool reports the PART project over the last 30 days.
 PROJECT = "PART"
 SINCE_DAYS = 30
-TREND_WEEKS = 8
 OUT_PATH = os.path.join(_REPO_ROOT, "data.json")
 
 
@@ -125,13 +124,13 @@ def compute_overdue(base_url: str, email: str, token: str, project: str) -> list
     return overdue
 
 
-def build_contract(base_url: str, email: str, token: str, project: str, since_days: int, trend_weeks: int) -> dict:
+def build_contract(base_url: str, email: str, token: str, project: str, since_days: int) -> dict:
     # compute_stats already returns: project, since_days, period_label, generated_at,
     # initiative_key, initiative_name, initiative_description, backlog_total,
-    # backlog_delivered, epic_cycle_time, throughput_per_week, prior_period,
-    # epics, flagged, trend, stale_tickets, resolved_this_period,
+    # backlog_delivered, epic_cycle_time, throughput_per_week,
+    # epics, flagged, stale_tickets, resolved_this_period,
     # priority_breakdown, assignee_breakdown, auto_caveats, suggested_status.
-    stats = compute_stats(base_url, email, token, project, since_days, trend_weeks)
+    stats = compute_stats(base_url, email, token, project, since_days)
 
     stats["active_issues"] = compute_active_issues(base_url, email, token, project, since_days)
     stats["overdue"] = compute_overdue(base_url, email, token, project)
@@ -142,10 +141,10 @@ def build_contract(base_url: str, email: str, token: str, project: str, since_da
     stats["stale"] = stats["stale_tickets"]
     stats["recent_epics"] = stats["epics"]
 
-    # sprint_goal / velocity_history are computed live in compute_stats
+    # sprint_goal / total_completed_points are computed live in compute_stats
     # (jira_exec_summary.compute_sprint_stats) from the Sprint/Story-Points
-    # fields — null with a caveat when there's no active/closed sprint yet,
-    # populated automatically once one exists. Never fill either with a
+    # fields — null with a caveat when there's no active sprint / no sprint data
+    # at all, populated automatically once one exists. Never fill either with a
     # guessed number.
 
     # GitHub PR activity (optional). Gated on config so a repo without GitHub set
@@ -194,7 +193,7 @@ def main() -> None:
     except JiraAuthError as exc:
         raise SystemExit(f"ERROR: {exc}")
 
-    data = build_contract(base_url, email, token, PROJECT, SINCE_DAYS, TREND_WEEKS)
+    data = build_contract(base_url, email, token, PROJECT, SINCE_DAYS)
 
     with open(OUT_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, default=str)

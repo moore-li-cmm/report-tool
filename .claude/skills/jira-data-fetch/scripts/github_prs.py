@@ -16,8 +16,9 @@ Config (env, read by fetch.py — this module just takes plain args):
 Cross-linking: each returned PR carries `linked_issues` — the Jira keys parsed
 out of its title + body (the team links the ticket in the PR **description**).
 That's what lets fetch.py attribute a PR to the sprint of the ticket it
-implemented. Windowed by the reporting window in days (there are no Jira sprints
-yet; grouping by sprint kicks in once the sprint field is populated — see fetch.py).
+implemented. Always windowed by the reporting window in days; fetch.py then
+groups those windowed PRs by the linked ticket's sprint, falling back to a
+single "(no sprint)" bucket for tickets with no sprint set (see fetch.py).
 """
 
 from __future__ import annotations

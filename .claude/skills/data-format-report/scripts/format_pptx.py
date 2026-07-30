@@ -6,11 +6,11 @@ hand-tweaked in PowerPoint/Keynote/Google Slides before sending on. Everything
 is real text boxes / shapes, so it edits like any normal slide.
 Self-contained: only python-pptx, no Jira engine or HTML template.
 
-Layout follows the Innova "Executive Summary" format: a KPI tile row, then two
-even columns — Active epics + What's-next (left) and Key updates + Focus areas
-(right). Scoped to the fields PART's Jira data actually supports (no Spend /
-Say-Do — the Story points KPI tile renders once a sprint exists, else a "not
-tracked" placeholder, never a mock number).
+Layout: an optional mission line under the header, a KPI tile row, then two even
+columns — Active epics + What's-next (left) and Key updates + Focus areas
+(right). Scoped to the fields PART's Jira data actually supports: the Story
+points KPI tile renders once the Sprint field has ever been populated, else a
+"no sprint data yet" placeholder, never a mock number.
 
 Usage:
     ./.venv/bin/python .claude/skills/data-format-report/scripts/format_pptx.py
@@ -34,18 +34,15 @@ VALUE_GREEN = RGBColor(0x1B, 0x5E, 0x4F)    # KPI value text
 TEXT_DARK = RGBColor(0x1A, 0x1A, 0x1A)
 TEXT_GRAY = RGBColor(0x59, 0x57, 0x53)
 WHITE = RGBColor(0xFF, 0xFF, 0xFF)
-BAR_GOOD = RGBColor(0x2E, 0x8B, 0x3D)
-BAR_MID = RGBColor(0xE0, 0x9B, 0x00)
-BAR_LOW = RGBColor(0x2A, 0x78, 0xD6)
-RANK_BADGE = RGBColor(0x8A, 0x88, 0x82)
+BADGE_NEW = RGBColor(0x2E, 0x8B, 0x3D)      # "NEW" epic badge
+BADGE_RANK = RGBColor(0xE0, 0x9B, 0x00)     # rank-moved badge
+RANK_BADGE = RGBColor(0x8A, 0x88, 0x82)     # ordinal #N badge fill
 
 SLIDE_W = Inches(13.333)
 SLIDE_H = Inches(7.5)
 MARGIN = Inches(0.3)
 
 # --- shared slide geometry (single source of truth) ------------------------
-# explain_layout.py imports these so its reference slide can't silently drift
-# from the real layout this module renders.
 TILE_ROW_Y = Inches(1.05)
 TILE_ROW_H = Inches(0.92)
 TILE_GAP = Inches(0.12)
@@ -121,21 +118,15 @@ def section_header(slide, x, y, w, text):
     return Emu(y + h)
 
 
-def tile_card(slide, x, y, w, h):
-    """A styled tile card — rounded white rect, green border, no shadow —
-    returning its text frame. Shared chrome for the real slide (kpi_tile) and
-    the explainer (explain_layout.explain_tile) so a restyle touches one place."""
+def kpi_tile(slide, x, y, w, h, value, label, *, empty_dot=False, sub=None, value_size=19):
+    # The tile card itself: rounded white rect, green border, no shadow.
     tile = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, x, y, w, h)
     tile.fill.solid()
     tile.fill.fore_color.rgb = WHITE
     tile.line.color.rgb = TILE_BORDER
     tile.line.width = Pt(1.5)
     tile.shadow.inherit = False
-    return _tf(tile)
-
-
-def kpi_tile(slide, x, y, w, h, value, label, *, empty_dot=False, sub=None, value_size=19):
-    tf = tile_card(slide, x, y, w, h)
+    tf = _tf(tile)
     tf.vertical_anchor = MSO_ANCHOR.MIDDLE
     if empty_dot:
         # Deliberately blank: an unfilled circle for whoever presents the slide
@@ -190,11 +181,11 @@ def epic_row(slide, x, y, w, epic, rank_pos):
     name = f"{epic.get('key', '')}: {epic.get('summary', '')}"
     _run(p, (name[:52] + "…") if len(name) > 53 else name, 8, color=TEXT_DARK)
     if epic.get("is_new"):
-        _run(p, "  NEW", 7, bold=True, color=BAR_GOOD)
+        _run(p, "  NEW", 7, bold=True, color=BADGE_NEW)
     rc = epic.get("rank_change")
     if rc:
         arrow = "▲" if rc.get("direction") == "raised" else "▼"
-        _run(p, f"  {arrow}RANK", 7, bold=True, color=BAR_MID)
+        _run(p, f"  {arrow}RANK", 7, bold=True, color=BADGE_RANK)
 
     # right: current status + child progress, in-flight emphasized
     rb = slide.shapes.add_textbox(Emu(x + w - right_w), y, right_w, h)
@@ -235,11 +226,11 @@ def build(data: dict, narrative: dict, out_path: str) -> None:
     slide = prs.slides.add_slide(prs.slide_layouts[6])  # blank
 
     # --- title + status line ---
-    title = slide.shapes.add_textbox(MARGIN, Inches(0.12), Inches(9), Inches(0.55))
+    title = slide.shapes.add_textbox(MARGIN, Inches(0.08), Inches(9), Inches(0.52))
     tf = _tf(title)
     _para(tf, f"Executive Summary — {data.get('project','')}", 26, bold=True,
           color=HEADER_GREEN, first=True)
-    sub = slide.shapes.add_textbox(MARGIN, Inches(0.66), Inches(12.7), Inches(0.3))
+    sub = slide.shapes.add_textbox(MARGIN, Inches(0.60), Inches(12.7), Inches(0.24))
     tf = _tf(sub)
     _para(tf, f"{data.get('period_label','')}  ·  generated {data.get('generated_at','')}",
           9.5, color=TEXT_GRAY, first=True)
@@ -293,8 +284,8 @@ def build(data: dict, narrative: dict, out_path: str) -> None:
         kpi_tile(slide, tx, ty, tw, th, t.get("value"), t["label"],
                  empty_dot=t.get("empty_dot", False), sub=t.get("sub"), value_size=t.get("value_size", 19))
 
-    # --- two body columns (throughput trend / velocity panels removed); each
-    # has a top slot and a bottom slot, split evenly across the slide width ---
+    # --- two body columns; each has a top slot and a bottom slot, split evenly
+    # across the slide width ---
     body_y = BODY_Y
     bottom_y = BOTTOM_Y
     lx, cx, col_w = body_columns()

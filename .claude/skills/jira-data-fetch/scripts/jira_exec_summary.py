@@ -13,7 +13,7 @@ Auth: same repo-root .env as jira_report.py.
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 
 from jira_report import (
     SPRINT_FIELD_ID,
@@ -24,39 +24,24 @@ from jira_report import (
     parse_jira_datetime,
 )
 
-# Confirmed via /rest/api/3/field on this instance: "Story Points" (distinct
-# from the unused "Story point estimate", customfield_10016). Other projects
-# may use a different ID.
+# Confirmed via /rest/api/3/field on this instance: "Story Points"  
+# Other projects may use a different ID.
 STORY_POINTS_FIELD_ID = "customfield_13078"
 
-# Confirmed via /rest/api/3/field on this instance: Jira Software's native
-# "Rank" field (com.pyxis.greenhopper.jira:gh-lexo-rank) — the real, team-set
-# backlog order (drag-and-drop), unlike Priority which sits at an unused
-# default ("Lowest") for every PART epic and carries no signal. Epics are
-# ordered by this field's LexoRank string, ascending. Other projects/instances
-# may use a different ID.
+# "Rank" field (com.pyxis.greenhopper.jira:gh-lexo-rank). Epics are
+# ordered by this field's LexoRank string, ascending. 
+# Other projects/instances may use a different ID.
 RANK_FIELD_ID = "customfield_10019"
-
-# Jira's native Flagged/Impediment field (multicheckboxes, value "Impediment")
-# — the same marker that shows as the flag icon on the board/backlog. The JQL
-# keyword "flagged" resolves to this field regardless of its customfield ID.
-FLAGGED_FIELD_ID = "customfield_10021"
-
-# How many closed sprints to include in velocity_history.
-MAX_VELOCITY_SPRINTS = 6
 
 # Confirmed empirically (see conversation): PART epics roll up to this
 # cross-project Initiative. Other projects/instances will differ.
 INITIATIVE_KEY = "AA-431"
-INITIATIVE_NAME = "AA-431 — Digital Health Partnerships – Phase 1 Provider Focus"
+INITIATIVE_NAME = "AA-431 — Digital Health Partnerships - Phase 1 Provider Focus"
 
-# Confirmed empirically: "Discard" marks test/junk data on this project — both
-# PART-1 "Sample Epic" (and its children PART-17/62/66/88) and standalone
-# "delete me" stories under otherwise-real epics (e.g. PART-135/138/139/140
-# under PART-128). Excluded wherever a terminal status could otherwise inflate
+# Excluded wherever a terminal status could otherwise inflate
 # a completion count (epic rollups, delivery/throughput, epic cycle time).
 EXCLUDED_STATUSES = {"discard"}
-DONE_STATUS_NAMES = {"done", "closed", "resolved", "discard", "cancelled", "canceled"}
+DONE_STATUS_NAMES = {"done", "discard", "cancelled", "holding tank"}
 
 def search(base_url, email, token, jql, fields):
     return fetch_issues(base_url, email, token, jql, fields=fields)
@@ -64,8 +49,8 @@ def search(base_url, email, token, jql, fields):
 
 def _under_initiative(issue: dict, epic_keys: set[str]) -> bool:
     """True if the issue's parent epic rolls up to a tracked initiative — the
-    scoping rule shared by backlog_total, backlog_delivered, and prior_period,
-    so all three reconcile against the same set of work."""
+    scoping rule shared by backlog_total and backlog_delivered, so both
+    reconcile against the same set of work."""
     return (issue["fields"].get("parent") or {}).get("key") in epic_keys
 
 
@@ -176,27 +161,6 @@ def compute_flagged(base_url, email, token, project) -> list[dict]:
     ]
 
 
-def compute_trend(base_url, email, token, project, weeks: int) -> dict:
-    issues = search(
-        base_url, email, token,
-        f"project = {project} AND resolutiondate is not EMPTY",
-        ["resolutiondate"],
-    )
-    cutoff = datetime.now(timezone.utc) - timedelta(weeks=weeks)
-    buckets: dict[date, int] = defaultdict(int)
-    for issue in issues:
-        resolved = parse_jira_datetime(issue["fields"]["resolutiondate"])
-        if resolved and resolved >= cutoff:
-            week_start = resolved.date() - timedelta(days=resolved.date().weekday())
-            buckets[week_start] += 1
-
-    today = datetime.now(timezone.utc).date()
-    this_week_start = today - timedelta(days=today.weekday())
-    ordered_weeks = [this_week_start - timedelta(weeks=w) for w in range(weeks - 1, -1, -1)]
-    counts = [buckets.get(w, 0) for w in ordered_weeks]
-    return {"week_labels": [w.isoformat() for w in ordered_weeks], "counts": counts}
-
-
 # Work items counted as "backlog" and "delivered": epics excluded (boards list
 # them separately — this is what makes backlog match the board count),
 # sub-tasks excluded (they double-count their parent's work), and EXCLUDED_STATUSES
@@ -208,70 +172,41 @@ _WORKITEM_FILTER = "issuetype not in (Epic, Sub-task) AND status not in (%s)" % 
 )
 
 
-def _delivery_metrics(resolved_issues: list[dict], since_days: int) -> dict:
-    """Delivery numbers over the set of issues RESOLVED in a window — regardless
-    of when they were created. That's true throughput; the old 'created AND
-    resolved in the same window' cohort silently undercounted work started
-    earlier and finished this period. (Cycle time is reported at the epic level
-    now — see compute_epic_cycle_time — not per work item.)"""
-    delivered = len(resolved_issues)
+def compute_epic_cycle_time(base_url, email, token, project, since_days, initiative_epic_keys) -> dict:
+    """Average days from creation to resolution for EPICS resolved in the
+    reporting window. This is the headline "how long an epic takes end-to-end"
+    number the slide reports as cycle time — a longer-horizon signal than
+    per-ticket cycle time. Test/discarded epics are excluded (they'd be a
+    meaningless zero-effort resolution), as are epics that don't roll up to a
+    real Initiative — same scoping as backlog/delivered, so an epic outside the
+    tracked initiatives can't drive this number."""
+    epics = search(
+        base_url, email, token,
+        f"project = {project} AND issuetype = Epic AND resolutiondate >= -{since_days}d",
+        ["created", "resolutiondate", "status"],
+    )
+    days = [
+        (
+            parse_jira_datetime(e["fields"]["resolutiondate"])
+            - parse_jira_datetime(e["fields"]["created"])
+        ).days
+        for e in epics
+        if e["fields"]["status"]["name"].lower() not in EXCLUDED_STATUSES
+        and e["key"] in initiative_epic_keys
+    ]
     return {
-        "backlog_delivered": delivered,
-        "throughput_per_week": round(delivered / (since_days / 7), 1),
+        "days": round(sum(days) / len(days), 1) if days else None,
+        "resolved_epics": len(days),
     }
 
 
-def compute_prior_period(base_url, email, token, project, since_days, initiative_epic_keys) -> dict:
-    """Delivery metrics for the window *before* this one (issues resolved in that
-    window), so KPI tiles can show a trend delta against a real baseline. Scoped
-    to initiative-epic children the same way the current window is, so the
-    delta compares like with like."""
-    jql = (
-        f"project = {project} AND {_WORKITEM_FILTER} "
-        f"AND resolutiondate >= -{2 * since_days}d AND resolutiondate < -{since_days}d"
-    )
-    issues = search(base_url, email, token, jql, ["resolutiondate", "parent"])
-    issues = [i for i in issues if _under_initiative(i, initiative_epic_keys)]
-    return _delivery_metrics(issues, since_days)
-
-
-def compute_epic_cycle_time(base_url, email, token, project, since_days, initiative_epic_keys) -> dict:
-    """Average days from creation to resolution for EPICS resolved in the current
-    window, plus the prior window for a trend delta. This is the headline
-    "how long an epic takes end-to-end" number the slide reports as cycle time —
-    a longer-horizon signal than per-ticket cycle time. Test/discarded epics are
-    excluded (they'd be a meaningless zero-effort resolution), as are epics that
-    don't roll up to a real Initiative — same scoping as backlog/delivered, so
-    an epic outside the tracked initiatives can't drive this number."""
-
-    def _avg(start_days: int, end_days: int) -> tuple[float | None, int]:
-        jql = f"project = {project} AND issuetype = Epic AND resolutiondate >= -{start_days}d"
-        if end_days:
-            jql += f" AND resolutiondate < -{end_days}d"
-        epics = search(base_url, email, token, jql, ["created", "resolutiondate", "status"])
-        days = [
-            (
-                parse_jira_datetime(e["fields"]["resolutiondate"])
-                - parse_jira_datetime(e["fields"]["created"])
-            ).days
-            for e in epics
-            if e["fields"]["status"]["name"].lower() not in EXCLUDED_STATUSES
-            and e["key"] in initiative_epic_keys
-        ]
-        return (round(sum(days) / len(days), 1) if days else None, len(days))
-
-    days, resolved = _avg(since_days, 0)
-    prior_days, _ = _avg(2 * since_days, since_days)
-    return {"days": days, "prior_days": prior_days, "resolved_epics": resolved}
-
-
 def compute_sprint_stats(base_url, email, token, project) -> dict:
-    """Live sprint_goal + velocity_history, derived from the Sprint/Story-Points
-    fields rather than hardcoded. Whatever state those fields are actually in —
-    no sprint yet, a sprint that hasn't started, an active sprint, or several
-    closed ones — falls out of this query automatically. No code change is
-    needed as PART's board moves from "no sprints" through "active sprint" to
-    "several closed sprints"; only the caveat text differs.
+    """Live sprint_goal + total_completed_points, derived from the Sprint/
+    Story-Points fields rather than hardcoded. Whatever state those fields are
+    actually in — no sprint yet, a sprint that hasn't started, an active sprint,
+    or several closed ones — falls out of this query automatically. No code
+    change is needed as PART's board moves from "no sprints" through "active
+    sprint" to "several closed sprints"; only the caveat text differs.
     """
     issues = search(
         base_url, email, token,
@@ -327,22 +262,6 @@ def compute_sprint_stats(base_url, email, token, project) -> dict:
     else:
         caveats.append("No Sprint field populated on this project yet — sprint_goal stays null.")
 
-    # velocity_history only counts CLOSED sprints — a completed cycle is the
-    # whole point of a velocity chart, an in-progress one isn't comparable yet.
-    closed = sorted(
-        (s for s in sprints.values() if (s.get("state") or "").lower() == "closed"),
-        key=lambda s: s.get("endDate") or "",
-    )[-MAX_VELOCITY_SPRINTS:]
-    if closed:
-        velocity_history = {
-            "sprint_labels": [s.get("name") for s in closed],
-            "committed": [committed.get(s.get("id"), 0) for s in closed],
-            "completed": [completed.get(s.get("id"), 0) for s in closed],
-        }
-    else:
-        velocity_history = None
-        caveats.append("No completed sprint yet — velocity_history stays null until one closes.")
-
     if sprints and not any(committed.values()):
         caveats.append("Sprint field is populated but Story Points aren't estimated on any ticket yet.")
 
@@ -355,13 +274,12 @@ def compute_sprint_stats(base_url, email, token, project) -> dict:
 
     return {
         "sprint_goal": sprint_goal,
-        "velocity_history": velocity_history,
         "total_completed_points": total_completed_points,
         "caveats": caveats,
     }
 
 
-def compute_stats(base_url, email, token, project, since_days, trend_weeks) -> dict:
+def compute_stats(base_url, email, token, project, since_days) -> dict:
     # Epics first — we need the set of epics that roll up to a real Initiative in
     # order to scope the backlog to initiative-connected work below.
     epics = compute_epics(base_url, email, token, project, since_days)
@@ -391,9 +309,13 @@ def compute_stats(base_url, email, token, project, since_days, trend_weeks) -> d
     )
     resolved_in_period = [i for i in resolved_in_period_all if _under_initiative(i, initiative_epic_keys)]
     resolved_excluded = len(resolved_in_period_all) - len(resolved_in_period)
-    delivery = _delivery_metrics(resolved_in_period, since_days)
-    backlog_delivered = delivery["backlog_delivered"]
-    throughput_per_week = delivery["throughput_per_week"]
+    # Delivery counts issues RESOLVED in the window regardless of when they were
+    # created. That's true throughput; a 'created AND resolved in the same
+    # window' cohort would silently undercount work started earlier and finished
+    # this period. (Cycle time is reported at the epic level — see
+    # compute_epic_cycle_time — not per work item.)
+    backlog_delivered = len(resolved_in_period)
+    throughput_per_week = round(backlog_delivered / (since_days / 7), 1)
 
     # How many EXCLUDED_STATUSES (test/junk) items resolved in-window were left
     # out of the count above — surfaced as a caveat so the exclusion isn't silent.
@@ -492,10 +414,10 @@ def compute_stats(base_url, email, token, project, since_days, trend_weeks) -> d
         )
 
     flagged = compute_flagged(base_url, email, token, project)
-    trend = compute_trend(base_url, email, token, project, trend_weeks)
 
     # Business-value source text lives on the initiative, not in any PART issue.
-    # Pull it so the LLM can ground the mission_line in real text.
+    # No dedicated narrative field consumes this — available for the manager
+    # to reference in prose if useful.
     init_issues = search(base_url, email, token, f"key = {INITIATIVE_KEY}", ["description", "status"])
     initiative_description = (
         adf_to_text(init_issues[0]["fields"].get("description")) if init_issues else ""
@@ -506,7 +428,6 @@ def compute_stats(base_url, email, token, project, since_days, trend_weeks) -> d
         init_issues[0]["fields"]["status"]["name"] if init_issues else None
     )
 
-    prior_period = compute_prior_period(base_url, email, token, project, since_days, initiative_epic_keys)
     epic_cycle_time = compute_epic_cycle_time(base_url, email, token, project, since_days, initiative_epic_keys)
 
     # Overall DELIVERY health of the team against initiative AA-431 (a red/amber/
@@ -530,16 +451,13 @@ def compute_stats(base_url, email, token, project, since_days, trend_weeks) -> d
         "initiative_description": initiative_description,
         "initiative_status": initiative_status,
         "sprint_goal": sprint_stats["sprint_goal"],
-        "velocity_history": sprint_stats["velocity_history"],
         "total_completed_points": sprint_stats["total_completed_points"],
         "backlog_total": backlog_total,
         "backlog_delivered": backlog_delivered,
         "epic_cycle_time": epic_cycle_time,
         "throughput_per_week": throughput_per_week,
-        "prior_period": prior_period,
         "epics": epics,
         "flagged": flagged,
-        "trend": trend,
         "stale_tickets": stale,
         "resolved_this_period": resolved_summaries,
         "priority_breakdown": dict(priority_counts),

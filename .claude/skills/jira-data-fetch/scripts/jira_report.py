@@ -41,8 +41,8 @@ def latest_sprint(fields: dict) -> dict | None:
     The Sprint field (SPRINT_FIELD_ID) is a list — an issue accumulates every
     sprint it has passed through — so the last dict entry is its current sprint.
     Returns None when the field is empty or unset. Shared by fetch.py's PR-sprint
-    attribution and jira_exec_summary's velocity stats so both bucket issues by
-    sprint the same way."""
+    attribution and jira_exec_summary's sprint/story-point stats so both bucket
+    issues by sprint the same way."""
     raw = fields.get(SPRINT_FIELD_ID) or []
     raw = raw if isinstance(raw, list) else [raw]
     return next((s for s in reversed(raw) if isinstance(s, dict)), None)

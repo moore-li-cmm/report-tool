@@ -15,16 +15,23 @@ fetch data, write a narrative, and render a slide.
 # Full report (what a user actually invokes):
 #   /weekly-report   →  runs the manager subagent end-to-end
 
-# Manual pipeline (venv interpreter required — bare python/python3 is not on PATH):
+# Manual pipeline (use ./.venv/bin/python — see the interpreter note below):
 ./.venv/bin/python .claude/skills/jira-data-fetch/scripts/fetch.py          # writes data.json
 # ... write narrative.json by hand per data-format-report/SKILL.md ...
 ./.venv/bin/python .claude/skills/data-format-report/scripts/format_pptx.py # writes exec_summary.pptx
 
-# Deps
-pip install -r requirements.txt   # requests, python-dotenv, python-pptx
+# Deps — .venv is gitignored, so create it on a fresh clone:
+python3 -m venv .venv
+./.venv/bin/pip install -r requirements.txt   # requests, python-dotenv, python-pptx
 ```
 
 No test suite, linter, or build step exists in this repo.
+
+**Interpreter:** the only real requirement is Python 3.9+ with
+`requirements.txt` installed — no code reads a `.venv`, so any interpreter
+carrying those three deps runs the scripts. Prefer `./.venv/bin/python`
+anyway: bare `python` doesn't exist here, and a system `python3` may or may not
+have the deps, so the venv is the one path guaranteed to work.
 
 Neither script takes arguments — project (`PART`), the 30-day window, and file
 paths are fixed constants at the top of `fetch.py`. Both scripts read/write
@@ -51,34 +58,33 @@ Three-stage pipeline, each stage a separate Claude Code concept:
      narrative-writing use real description text instead of just ticket titles).
    - `jira_exec_summary.py` — the actual stats engine (`compute_stats`):
      initiative-scoped backlog, delivery/throughput, epic cycle time (creation→
-     resolution over resolved epics, with a prior-period delta), epic rollup to
+     resolution over resolved epics), epic rollup to
      initiative `AA-431` with per-epic Rank/status/new/done-recent/rank-change
      (via changelog), flagged tickets (Jira's native Flag/Impediment field,
-     not issue links), 8-week resolution trend,
-     data-hygiene `auto_caveats`.
+     not issue links), data-hygiene `auto_caveats`.
    - `github_prs.py` — optional GitHub PR stats (opened/merged/open, cross-linked
      to Jira keys parsed from PR title/body). Degrades to `configured: false`
      rather than failing the run if unset or erroring.
    - `fetch.py` adds two things the engine doesn't: `active_issues` and
      `overdue`, then aliases fields to match the SKILL.md output contract.
-     `sprint_goal`/`velocity_history` are computed live by
+     `sprint_goal`/`total_completed_points` are computed live by
      `jira_exec_summary.compute_sprint_stats` from the Sprint/Story-Points
-     fields — null only while there's genuinely no active/closed sprint (see
-     below), not hardcoded.
+     fields — null only while there's genuinely no active sprint / no sprint
+     data at all (see below), not hardcoded.
    - Output: `data.json` at repo root. Schema documented in
      `.claude/skills/jira-data-fetch/SKILL.md`.
 
 2. **`manager` subagent** (`.claude/agents/manager.md`) — the analysis step, done
    by an LLM reading `data.json`, not a script. Writes `narrative.json` by hand
-   following the six-question → field mapping in
+   following the five-question → field mapping in
    `.claude/skills/data-format-report/SKILL.md` (what the team's doing / impact /
-   value / efficiency / improvement / risks). This is where all the
+   efficiency / improvement / risks). This is where all the
    "don't inflate a ticket past what it actually did" judgment calls happen.
 
 3. **`data-format-report` skill** (`.claude/skills/data-format-report/scripts/format_pptx.py`)
    — pure rendering. Merges `data.json` + `narrative.json` into a native,
-   editable single-slide `.pptx` (real shapes/text boxes via `python-pptx`, no
-   chart) — self-contained, no dependency on the Jira engine.
+   editable single-slide `.pptx` (real shapes/text boxes via `python-pptx`) —
+   self-contained, no dependency on the Jira engine.
 
 The `/weekly-report` slash command (`.claude/commands/weekly-report.md`) is the
 user-facing entry point; it just invokes the `manager` subagent.
@@ -97,19 +103,20 @@ user-facing entry point; it just invokes the `manager` subagent.
   caveat naming which tickets were dropped so the exclusion isn't silent.
 - **Sprint field (`customfield_10020`) and Story Points field
   (`customfield_13078`) are now populated** — a sprint ("PartInt Pilot 1")
-  started 2026-07-29. `sprint_goal`/`velocity_history` are computed live from
-  these (`jira_exec_summary.compute_sprint_stats`) and stay `null` only when
-  there's genuinely no active sprint (`sprint_goal`) or no *closed* sprint yet
-  (`velocity_history`) — `auto_caveats` states which case applies (e.g. "sprint
-  active but no goal set", "no completed sprint yet"). Report
+  started 2026-07-29. `sprint_goal`/`total_completed_points` are computed live
+  from these (`jira_exec_summary.compute_sprint_stats`) and stay `null` only
+  when there's genuinely no active sprint (`sprint_goal`) or the Sprint field
+  has never been populated at all (`total_completed_points`) — `auto_caveats`
+  states which case applies (e.g. "sprint active but no goal set", "Story Points
+  aren't estimated on any ticket yet"). Report
   `throughput_per_week`/`epic_cycle_time` instead whenever these are null;
-  never fabricate a velocity number. No code change is needed as the sprint
+  never fabricate a story-point number. No code change is needed as the sprint
   moves through states.
 - **Backlog is initiative-scoped**: `backlog_total` counts only open tickets
   whose parent epic rolls up to a real Initiative; orphan tickets are excluded
   (a caveat reports how many). It intentionally won't match the board's raw
   open count. `backlog_delivered`/`throughput_per_week`/`resolved_this_period`
-  (and `prior_period`, for a like-for-like delta) are scoped the same way — a
+  are scoped the same way — a
   resolved item only counts if its parent epic rolls up to a real Initiative,
   with a caveat naming how many resolved tickets were excluded. This can
   legitimately read `0` even when real work shipped that period, if the
@@ -135,11 +142,11 @@ user-facing entry point; it just invokes the `manager` subagent.
   changelog but only ever carries a bare direction (`raised`/`lowered`) — Jira
   logs Rank moves as "Ranked higher"/"Ranked lower" with no absolute from/to
   position. Each epic also carries `is_new`/`is_done_recent` (created/resolved
-  within the reporting window), which feed the slide's "Started epics | done
-  (last Nd)" KPI tile.
+  within the reporting window), which feed the slide's "Started epics | done"
+  KPI tile — both halves time-boxed to the reporting window.
 - `initiative_status` (AA-431's own Jira status/phase) is still computed and
   present in `data.json`, but has no dedicated slide tile. It's still available
-  for the manager to reference in prose (e.g. `mission_line`) if useful.
+  for the manager to reference in prose if useful.
 - **"Project health" is a deliberately blank KPI tile** — an empty, uncolored
   circle for whoever presents the slide to annotate by hand in PowerPoint. It
   is never auto-computed from `data.json` or written by the manager into
@@ -156,15 +163,32 @@ user-facing entry point; it just invokes the `manager` subagent.
 
 ## Narrative-writing rules (apply when editing `manager.md` or writing `narrative.json`)
 
-- `mission_line` (business value) and `whats_next` (forward outlook) are the
-  only "value"/"upcoming" content — no separate value panel exists.
-- `key_updates` (impact) must be grounded in `resolved_this_period` (what
-  actually shipped), never in aspirational epic descriptions.
-- Never inflate a bullet past its ticket: a scaffold-only ticket is "created the
-  repo scaffold," not "stood up the service"; a spike "researched options," not
-  "settled the design." Test: would the engineer who closed it recognize the
-  claim as their work?
-- Only claim a trend direction (throughput up/down) with ≥2 non-zero weeks in
-  each half of the window — otherwise say the window is too thin.
-- `key_updates`/`focus_areas` share one slide column — keep each to ~3 short
-  one-line bullets.
+- `whats_next` (forward outlook) is the only "upcoming" content — no
+  separate value panel exists.
+- `key_updates` is a **verb-first milestone list in the presenting manager's own
+  voice** — "Created new Partner Integration repo (dhc-pa-adapter)." The full
+  house style, with a worked example, lives in `.claude/agents/manager.md`
+  ("House style for `key_updates`"); `data-format-report/SKILL.md` carries the
+  condensed version. Shape: subject dropped, artifact named (never a `PART-###`
+  key), no metrics, one line each, 5-7 bullets. Enablement/process milestones
+  count, and non-initiative work earns a line even though it stays out of the
+  delivery numbers.
+- **The verb encodes completion state, and that's what keeps the bullet honest.**
+  Created/Finalized/Completed = done, and must trace to `resolved_this_period`;
+  Initiated/Built out = real but underway, from an in-flight epic or story.
+  Never an epic's aspirational description on its own. Pick the accurate verb
+  and stop — don't prop up an overstated one with a trailing hedge.
+- Never inflate a bullet past its ticket: a scaffold-only ticket is "Created new
+  Partner Integration repo," not "stood up the service"; a spike "researched
+  options," not "settled the design." Test: would the engineer who did it
+  recognize the claim as their work?
+- Never claim a metric direction (throughput/cycle time up or down, faster or
+  slower, holding steady). `data.json` is a single-window snapshot with no
+  baseline or history — there is nothing to compare against. Answer "how is the
+  team improving" from concrete process facts instead, and flag numbers too thin
+  to lean on (`resolved_epics` 0-1, `backlog_delivered` 0).
+- `key_updates`/`focus_areas` share one slide column: `key_updates` gets 5-7
+  bullets, `focus_areas` ≤3. Both must be **true one-liners** — the cap exists
+  because a bullet that wraps to two lines eats its neighbor's space (the
+  Key-updates box is a fixed 2.4" with shrink-to-fit, so wordy bullets get
+  scaled down small rather than overflowing).
