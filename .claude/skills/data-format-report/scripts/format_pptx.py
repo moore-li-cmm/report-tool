@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 
 from pptx import Presentation
 from pptx.dml.color import RGBColor
@@ -37,6 +38,7 @@ WHITE = RGBColor(0xFF, 0xFF, 0xFF)
 BADGE_NEW = RGBColor(0x2E, 0x8B, 0x3D)      # "NEW" epic badge
 BADGE_RANK = RGBColor(0xE0, 0x9B, 0x00)     # rank-moved badge
 RANK_BADGE = RGBColor(0x8A, 0x88, 0x82)     # ordinal #N badge fill
+PLACEHOLDER_BLUE = RGBColor(0x00, 0x70, 0xC0)  # placeholder [date] styling
 
 SLIDE_W = Inches(13.333)
 SLIDE_H = Inches(7.5)
@@ -105,7 +107,26 @@ def _run(p, text, size, *, bold=False, color=TEXT_DARK, italic=False):
     return r
 
 
-def section_header(slide, x, y, w, text):
+def _split_text_with_placeholders(text):
+    """Split text into parts: ('text', content) or ('placeholder', content).
+
+    Detects bracketed placeholders like [date] and returns a list of tuples
+    indicating which parts are placeholders vs regular text.
+    """
+    parts = []
+    pattern = r'\[([^\]]+)\]'
+    last_end = 0
+    for match in re.finditer(pattern, text):
+        if match.start() > last_end:
+            parts.append(('text', text[last_end:match.start()]))
+        parts.append(('placeholder', match.group(0)))
+        last_end = match.end()
+    if last_end < len(text):
+        parts.append(('text', text[last_end:]))
+    return parts if parts else [('text', text)]
+
+
+def section_header(slide, x, y, w, text, right_text=None):
     h = Inches(0.3)
     box = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, x, y, w, h)
     box.fill.solid()
@@ -115,6 +136,15 @@ def section_header(slide, x, y, w, text):
     tf = _tf(box)
     tf.vertical_anchor = MSO_ANCHOR.MIDDLE
     _para(tf, text.upper(), 10.5, bold=True, color=WHITE, first=True)
+    if right_text:
+        # Overlaid on top of the green bar (transparent textbox), right-aligned
+        # to match epic_row's completed-count column below it.
+        right_w = Inches(1.2)
+        rb = slide.shapes.add_textbox(Emu(x + w - right_w), y, right_w, h)
+        rtf = _tf(rb)
+        rtf.vertical_anchor = MSO_ANCHOR.MIDDLE
+        _para(rtf, right_text.upper(), 8, bold=True, color=WHITE,
+              align=PP_ALIGN.RIGHT, first=True)
     return Emu(y + h)
 
 
@@ -151,10 +181,11 @@ def kpi_tile(slide, x, y, w, h, value, label, *, empty_dot=False, sub=None, valu
 
 def epic_row(slide, x, y, w, epic, rank_pos):
     """One active-epic line: ordinal rank badge, the epic name with NEW /
-    rank-change badges, and a right-aligned status (in-flight emphasized).
-    Epics are pre-sorted by Jira's real Rank field upstream, so top-to-bottom
-    IS the team's actual backlog order — not the (unused-default) Priority
-    field, which this row deliberately doesn't show."""
+    rank-change badges, and a right-aligned completed-story count (N/A when
+    the epic has no child stories). Epics are pre-sorted by Jira's real Rank
+    field upstream, so top-to-bottom IS the team's actual backlog order — not
+    the (unused-default) Priority field, which this row deliberately doesn't
+    show."""
     h = Inches(0.30)
     dot_w = Inches(0.26)
     right_w = Inches(1.2)
@@ -179,15 +210,18 @@ def epic_row(slide, x, y, w, epic, rank_pos):
     p = tf.paragraphs[0]
     p.space_after = Pt(0)
     name = f"{epic.get('key', '')}: {epic.get('summary', '')}"
-    _run(p, (name[:52] + "…") if len(name) > 53 else name, 8, color=TEXT_DARK)
+    # Truncate shorter if badges will be added, to prevent overflow
+    has_badges = epic.get("is_new") or epic.get("rank_change")
+    max_len = 40 if has_badges else 52
+    _run(p, (name[:max_len] + "…") if len(name) > max_len + 1 else name, 8, color=TEXT_DARK)
     if epic.get("is_new"):
         _run(p, "  NEW", 7, bold=True, color=BADGE_NEW)
     rc = epic.get("rank_change")
     if rc:
-        arrow = "▲" if rc.get("direction") == "raised" else "▼"
-        _run(p, f"  {arrow}RANK", 7, bold=True, color=BADGE_RANK)
+        arrow = "⬆" if rc.get("direction") == "raised" else "⬇"
+        _run(p, f"  {arrow} RANK", 7, bold=True, color=BADGE_RANK)
 
-    # right: current status + child progress, in-flight emphasized
+    # right: completed child-story count, N/A when the epic has no stories
     rb = slide.shapes.add_textbox(Emu(x + w - right_w), y, right_w, h)
     tf = _tf(rb)
     tf.word_wrap = False
@@ -195,14 +229,23 @@ def epic_row(slide, x, y, w, epic, rank_pos):
     p = tf.paragraphs[0]
     p.alignment = PP_ALIGN.RIGHT
     p.space_after = Pt(0)
-    in_flight = epic.get("in_flight")
     total, done = epic.get("total", 0), epic.get("done", 0)
-    prog = f"  {done}/{total}" if total else ""
-    # Normalize the in-flight state to a plain-language label instead of the raw
-    # Jira status name (e.g. "Analyzing" -> "In Progress").
-    label = "In Progress" if in_flight else epic.get("status", "")
-    _run(p, f"{label}{prog}", 7.5, bold=bool(in_flight),
-         color=HEADER_GREEN if in_flight else TEXT_GRAY)
+    label = f"{done}/{total}" if total else "N/A"
+    _run(p, label, 7.5, bold=False, color=TEXT_GRAY)
+
+
+def epic_legend(slide, x, y, w):
+    """One-line key for the NEW / RANK badges shown inline on epic rows."""
+    box = slide.shapes.add_textbox(x, y, w, Inches(0.22))
+    tf = _tf(box)
+    tf.word_wrap = False
+    tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+    p = tf.paragraphs[0]
+    p.space_after = Pt(0)
+    _run(p, "NEW", 7, bold=True, color=BADGE_NEW)
+    _run(p, " — created last 30d      ", 7, color=TEXT_GRAY)
+    _run(p, "⬆⬇ RANK", 7, bold=True, color=BADGE_RANK)
+    _run(p, " — shift in rank in the last 30d", 7, color=TEXT_GRAY)
 
 
 def bullets(slide, x, y, w, h, items, size=9.5):
@@ -215,7 +258,22 @@ def bullets(slide, x, y, w, h, items, size=9.5):
         _para(tf, "—", size, color=TEXT_GRAY, first=True)
         return
     for i, item in enumerate(items):
-        _para(tf, f"•  {item}", size, color=TEXT_DARK, first=(i == 0), space_after=5)
+        p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+        p.alignment = PP_ALIGN.LEFT
+        p.space_after = Pt(5)
+        # Bullet marker
+        r = p.add_run()
+        r.text = "•  "
+        r.font.size = Pt(size)
+        r.font.color.rgb = TEXT_DARK
+        r.font.name = "Calibri"
+        # Item text with placeholder styling
+        parts = _split_text_with_placeholders(item)
+        for part_type, content in parts:
+            if part_type == 'placeholder':
+                _run(p, content, size, bold=True, color=PLACEHOLDER_BLUE)
+            else:
+                _run(p, content, size, color=TEXT_DARK)
 
 
 
@@ -247,9 +305,9 @@ def build(data: dict, narrative: dict, out_path: str) -> None:
         # Project health: deliberately blank — a manual fill-in the presenter
         # colors/annotates by hand in PowerPoint, never auto-computed.
         {"label": "Project health", "empty_dot": True},
-        {"value": f"{epics_started} | {epics_done}", "label": "Started epics | done"},
-        {"value": f"{data.get('backlog_total',0)} | {data.get('backlog_delivered',0)}", "label": "Backlog | delivered"},
-        {"value": f"{ecd if ecd is not None else 'n/a'} d", "label": "Epic cycle time"},
+        {"value": f"{epics_started} | {epics_done}", "label": "Epics created | completed"},
+        {"value": f"{ecd} d" if ecd is not None else "n/a", "label": "Epic cycle time"},
+        {"value": f"{data.get('backlog_total',0)} | {data.get('backlog_delivered',0)}", "label": "Backlog | completed"},
         {"value": f"{data.get('throughput_per_week', 0):.1f}", "label": "Throughput / wk"},
         # total_completed_points (jira_exec_summary.compute_sprint_stats) sums
         # completed points across every sprint ever run, not just the current
@@ -294,11 +352,12 @@ def build(data: dict, narrative: dict, out_path: str) -> None:
     # LEFT: active epics (top) + what's next (bottom). Rows are in real backlog-
     # Rank order (sorted upstream, not Priority); each shows in-flight status
     # and NEW / rank-change badges.
-    y = section_header(slide, lx, body_y, lw, "Active epics — by rank")
+    y = section_header(slide, lx, body_y, lw, "Top 6 epics — by rank", right_text="Completed")
     ey = Emu(y + Inches(0.06))
     for rank_pos, e in enumerate(epics[:6], start=1):
         epic_row(slide, lx, ey, lw, e, rank_pos)
         ey = Emu(ey + Inches(0.30))
+    epic_legend(slide, lx, Emu(ey + Inches(0.06)), lw)
     if narrative.get("whats_next"):
         wy = section_header(slide, lx, bottom_y, lw, "What's next")
         bullets(slide, lx, Emu(wy + Inches(0.06)), lw, Inches(2.0),
