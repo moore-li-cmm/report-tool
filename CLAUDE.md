@@ -142,8 +142,8 @@ user-facing entry point; it just invokes the `manager` subagent.
   changelog but only ever carries a bare direction (`raised`/`lowered`) — Jira
   logs Rank moves as "Ranked higher"/"Ranked lower" with no absolute from/to
   position. Each epic also carries `is_new`/`is_done_recent` (created/resolved
-  within the reporting window), which feed the slide's "Started epics | done"
-  KPI tile — both halves time-boxed to the reporting window.
+  within the reporting window), which feed the slide's "Epics created |
+  completed" KPI tile — both halves time-boxed to the reporting window.
 - `initiative_status` (AA-431's own Jira status/phase) is still computed and
   present in `data.json`, but has no dedicated slide tile. It's still available
   for the manager to reference in prose if useful.
@@ -163,16 +163,50 @@ user-facing entry point; it just invokes the `manager` subagent.
 
 ## Narrative-writing rules (apply when editing `manager.md` or writing `narrative.json`)
 
-- `whats_next` (forward outlook) is the only "upcoming" content — no
-  separate value panel exists.
-- `key_updates` is a **verb-first milestone list in the presenting manager's own
-  voice** — "Created new Partner Integration repo (dhc-pa-adapter)." The full
-  house style, with a worked example, lives in `.claude/agents/manager.md`
-  ("House style for `key_updates`"); `data-format-report/SKILL.md` carries the
-  condensed version. Shape: subject dropped, artifact named (never a `PART-###`
-  key), no metrics, one line each, 5-7 bullets. Enablement/process milestones
-  count, and non-initiative work earns a line even though it stays out of the
-  delivery numbers.
+- **All three narrative panels follow a house style set by the manager who
+  presents the slide**, and each has a *different grammar* — that distinction is
+  load-bearing, so don't collapse it. The canonical version with their
+  hand-written examples lives in `.claude/agents/manager.md` ("House style for
+  the three narrative panels"); `data-format-report/SKILL.md` carries the
+  condensed table.
+
+  | Panel | Grammar | Count |
+  |---|---|---|
+  | `key_updates` | verb-first past tense — "Created new Partner Integration repo (dhc-pa-adapter)." | 5-7, one line each |
+  | `focus_areas` | noun phrase, no leading verb — "SAFe readiness and transition." | 3-4, ≤2 lines each |
+  | `whats_next` | either, plus a date when there is one — "ARB review on [date]." | 4-6 |
+
+  **No `PART-###` keys and no percentages in any of the three.** Keys survive only
+  in the auto-rendered Active-epics panel; numbers live in the KPI tiles. A
+  leading verb in `focus_areas` is the most common slip — it means a key update
+  got written in the wrong box.
+- `whats_next` (forward outlook) is the only "upcoming" content — no separate
+  value panel exists. It's also where scheduled events and external audiences go
+  ("Present … to Priorly in customer meeting on [date]").
+- **`focus_areas` is investment themes, not a risk list** (changed from the
+  original design). It names standing workstreams, optionally with a " - why it
+  matters" tail. Because a noun phrase claims no completion, a focus area may be
+  forward-leaning — but it must trace to real tickets/epics. **One slot is
+  reserved for a material risk** whenever `data.flagged` is non-empty or an
+  unstarted epic gates others, phrased as a noun phrase naming the consequence
+  ("Partner Auth & Access dependency — blocks FormPick, Drugs, and PA
+  Initiation."). That slot is the *only* place risk detail reaches the slide —
+  the Flagged KPI tile is a bare count with no detail panel — so dropping it
+  hides bad news.
+- **Never invent a date.** `data.json` carries no due dates on any issue, so any
+  specific date is external knowledge: name the milestone and leave a literal
+  `[date]` for the presenter. The *event* must still be groundable even when the
+  date isn't. Open-ended horizons ("by end of calendar year", "next sprint",
+  "once ARB clears") need no placeholder.
+- **Never lift a proper noun the data can't source — but search for the concept,
+  not the manager's exact spelling, before calling it ungroundable.** Jira often
+  carries the same workstream under another name: "Evaluation Gate" is **"Eval
+  Gate"** there, and **"CMI" is "CoverMyIncident"** — both real and reportable.
+  `PDK` and `Dev Gate` genuinely have no ticket, so describe those generically
+  ("the agentic development workflow", "ARB review"). Try the acronym expanded,
+  the phrase abbreviated, and the obvious synonym first.
+- Enablement/process milestones count as `key_updates`, and non-initiative work
+  earns a line even though it stays out of the delivery numbers.
 - **The verb encodes completion state, and that's what keeps the bullet honest.**
   Created/Finalized/Completed = done, and must trace to `resolved_this_period`;
   Initiated/Built out = real but underway, from an in-flight epic or story.
@@ -187,8 +221,12 @@ user-facing entry point; it just invokes the `manager` subagent.
   baseline or history — there is nothing to compare against. Answer "how is the
   team improving" from concrete process facts instead, and flag numbers too thin
   to lean on (`resolved_epics` 0-1, `backlog_delivered` 0).
-- `key_updates`/`focus_areas` share one slide column: `key_updates` gets 5-7
-  bullets, `focus_areas` ≤3. Both must be **true one-liners** — the cap exists
-  because a bullet that wraps to two lines eats its neighbor's space (the
-  Key-updates box is a fixed 2.4" with shrink-to-fit, so wordy bullets get
-  scaled down small rather than overflowing).
+- **Panel geometry, which is what sets the bullet counts.** `key_updates` and
+  `focus_areas` share the right column; `whats_next` sits under the epic panel on
+  the left. Every box is fixed-height with shrink-to-fit, so overlong content
+  gets scaled down small rather than overflowing. Budgets: Key updates 2.4"
+  (7 one-liners ≈ 1.35", comfortable), Focus areas and What's next 2.0" each
+  (4 two-line bullets ≈ 1.5", and What's next ends at 7.41" on a 7.5" slide, so
+  it's the tightest of the three). `key_updates` must stay true one-liners;
+  `focus_areas`/`whats_next` may wrap to two. Re-render and check before
+  raising any count.

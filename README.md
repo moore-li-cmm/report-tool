@@ -6,6 +6,10 @@ editable executive-summary slide: `exec_summary.pptx`.
 There is no app to run. The "product" is a Claude Code setup — one subagent plus
 two skills — that fetches data, writes the narrative, and renders the slide.
 
+// requires jira token (explain how using api vs. mcp costs less tokens and faster)
+// when an epic is completed within the month, show it, but drop the epic next month (so "ACTIVE EPICS" isn't clogged w/ old, completed epics)
+
+
 ## Quick start
 
 ```bash
@@ -96,7 +100,7 @@ endpoint returns 200 + empty results for a bad token.
 A KPI tile row and two even columns:
 
 - **Tiles:** Project health (deliberately blank — a manual fill-in the presenter
-  colors by hand), Started epics | done, Backlog | delivered, Epic cycle time,
+  colors by hand), Epics created | completed, Backlog | delivered, Epic cycle time,
   Throughput / wk, Story pts completed, PRs merged | open now (when configured),
   Flagged.
 - **Left column:** Active epics — by rank (top 6, real Jira `Rank` order, with

@@ -32,34 +32,58 @@ One manual step, one script:
 
 ```json
 {
-  "key_updates": ["5-7 verb-first milestone bullets, each ONE line (~8-14 words) — no ticket keys, no metrics; see house style below"],
-  "focus_areas": ["2-3 SHORT one-line bullets — what needs attention NOW (shares the center column with key_updates — keep tight)"],
-  "whats_next": ["2-4 short bullets — the near-term deliverables/milestones coming NEXT period; forward-looking, distinct from focus_areas"]
+  "key_updates": ["5-7 VERB-FIRST past-tense milestone bullets, one line each (~8-14 words) — what got done"],
+  "focus_areas": ["3-4 NOUN-PHRASE bullets (no leading verb) — standing workstreams the team is investing attention in; up to ~2 lines each; reserve one slot for a material risk when something is flagged/blocking"],
+  "whats_next": ["4-6 bullets, verb-first OR noun phrase — upcoming deliverables and scheduled events; specific dates must be a literal [date] placeholder"]
 }
 ```
 
 **Grounding rules that keep this honest:**
 
-- **`whats_next` is the forward-outlook panel in the left slot.** 2-4 bullets
-  on the near-term deliverables/milestones coming next, derived from epic
-  sequencing/descriptions and the pending decisions in the data. Use honest
-  timing you can actually support ("next sprint", "once ARB clears") — do NOT
-  invent calendar dates that aren't in Jira. Keep it distinct from
-  `focus_areas` (what needs attention *now*). Omit the key to omit the panel.
-- **`key_updates` is a verb-first milestone list.** House style, set by the
-  manager who presents this slide (full version and worked example in
-  `.claude/agents/manager.md` → "House style for `key_updates`"):
+- **All three panels follow a house style set by the manager who presents this
+  slide.** The canonical version, with their hand-written examples for each
+  panel, is in `.claude/agents/manager.md` → "House style for the three
+  narrative panels". **Each panel has a different grammar, and that's
+  load-bearing:**
 
-  > - Created new Partner Integration repo (dhc-pa-adapter).
-  > - Requirements intake completed and all work epics for Pilot created.
-  > - Initiated API endpoints with associated Swagger docs/specs to share with Pilot customer.
+  | Panel | Grammar | Count | Answers |
+  |---|---|---|---|
+  | `key_updates` | verb-first, past tense | 5-7, one line each | what got done |
+  | `focus_areas` | noun phrase, no leading verb | 3-4, ≤2 lines each | where attention is going |
+  | `whats_next` | either | 4-6 | what's coming |
 
-  Verb first, subject dropped. Name the **artifact** (`dhc-pa-adapter`, ARB,
-  PDK, Swagger), never a `PART-###` key. **No metrics** — those live in the KPI
-  tiles and in `focus_areas`. One line each, 5-7 bullets. Enablement and process
-  milestones (training done, sprint cadence started) count, and work outside the
-  `AA-431` initiative still earns a line even though it stays out of the
-  delivery numbers.
+  **None of the three carries a `PART-###` key or a percentage.** Keys survive
+  only in the auto-rendered Active-epics panel; numbers live in the KPI tiles.
+  Condensed examples:
+
+  > `key_updates`  — Created new Partner Integration repo (dhc-pa-adapter).
+  > `focus_areas`  — SAFe readiness and transition.
+  > `whats_next`   — ARB review on [date].
+
+- **`key_updates`** — verb first, subject dropped, artifact named
+  (`dhc-pa-adapter`, Swagger, ARB). Enablement and process milestones (training
+  done, sprint cadence started) count, and work outside the `AA-431` initiative
+  still earns a line even though it stays out of the delivery numbers.
+- **`focus_areas` is investment themes, NOT the risk list** — this changed;
+  don't write it as a problem inventory. Noun phrases naming standing
+  workstreams ("SAFe readiness and transition."), which may carry a " - why it
+  matters" tail. A leading verb means you've written a key update in the wrong
+  box. Because a focus area asserts no completion, it may be forward-leaning —
+  but the theme must trace to real tickets/epics in `data.json`.
+  **Reserve one slot for a material risk** when `data.flagged` is non-empty or an
+  unstarted epic is gating others, in the same noun-phrase voice with the
+  consequence named ("Partner Auth & Access dependency — blocks FormPick, Drugs,
+  and PA Initiation."). This is the only place risk detail reaches the slide, so
+  skipping it hides bad news. A count is allowed here when it *is* the point.
+- **`whats_next`** — upcoming deliverables and scheduled events; name the
+  external audience when there is one ("to Priorly in customer meeting").
+  **`data.json` contains no due dates on any issue**, so every specific date is
+  external knowledge: name the milestone and write a literal `[date]` for the
+  presenter to fill, never a guessed `8/4`. The *event* must still be groundable
+  even when the date isn't. Open-ended horizons need no placeholder ("by end of
+  calendar year", "next sprint", "once ARB clears"). Overlap with `focus_areas`
+  is expected — a topic can be both a standing theme and a concrete next step;
+  don't dedupe. Omit the key to omit the panel.
 - **The verb must match the item's real status — that's what keeps it honest.**
   Created / Finalized / Completed / Submitted = done, and must trace to
   `data.resolved_this_period`. Initiated / Built out / Started = real and
@@ -89,7 +113,7 @@ One manual step, one script:
 | 2 | What is the impact | `key_updates` | `resolved_this_period` (each has `description`) for completed-verb bullets; in-flight epics/stories for "initiated"-verb ones — NOT epic goals |
 | 3 | Is work efficient | auto-rendered Epic cycle time / Throughput-per-week / Story-pts-completed tiles | `epic_cycle_time` (`{days, resolved_epics}` — epic-level, not per-ticket; check `resolved_epics` before trusting a thin number), `throughput_per_week`, `total_completed_points`, `sprint_goal` (null until a sprint is active — don't substitute a proxy silently when it is) |
 | 4 | How is the team improving | fold into `key_updates`/`focus_areas` — no dedicated panel | **No trend data exists** — `data.json` is a single-window snapshot with no baseline. Answer this from concrete process facts you can point at (a dependency unblocked, a spec landing that unblocks N stories, a flag cleared), never from a metric direction |
-| 5 | What's going wrong/slow | `focus_areas` + the auto-rendered Flagged KPI tile (a count only — no detail panel) | `data.flagged`/`stale`/`overdue` (`flagged` is Jira's native Flag/Impediment field, not an issue-link relationship; surface the worst by `days_since_update`/`days_overdue` in `focus_areas` — the tile shows no detail) — if all three are empty, say "nothing flagged/stale/overdue" explicitly, don't omit the section |
+| 5 | What's going wrong/slow | **the one reserved risk slot in `focus_areas`** + the auto-rendered Flagged KPI tile (a count only — no detail panel) | `data.flagged`/`stale`/`overdue` (`flagged` is Jira's native Flag/Impediment field, not an issue-link relationship, and its items key off `issue`, not `key`). `focus_areas` is themes now, so the worst item by `days_since_update`/`days_overdue` gets **one** noun-phrase bullet with the consequence named — that's the whole answer to Q5 on the slide. If all three are empty, say "nothing flagged/stale/overdue" to the caller and spend the slot on a theme |
 
 ## Guidance for writing good bullets
 
@@ -101,10 +125,11 @@ counts). The rest, specific to writing bullets for this slide:
 
 - **Every claim traces to a specific item in `data.json`** — you must be able to
   name the ticket or epic behind each bullet even when you don't print its key.
-- **In `focus_areas`, show the number or key** — "epics are stalled" is weak;
-  "5 of 7 linked epics have zero child issues created" is what a skip-level
-  reader needs in order to act. In `key_updates`, cite neither: milestone, verb,
-  artifact, done.
+- **Name the consequence instead of the count.** The old advice here was to
+  quantify in `focus_areas` ("5 of 7 linked epics have zero child issues"); the
+  house style drops bare metrics from all three panels, so carry the *stakes* in
+  words instead — "blocks FormPick, Drugs, and PA Initiation" tells a skip-level
+  reader what to do about it, and the KPI tiles supply the arithmetic.
 - **Distinguish real signal from data-hygiene noise.** Check `data.auto_caveats`
   before featuring a number as insight (e.g. don't report "60% unassigned" as
   a workload finding if it's flagged as untriaged noise).

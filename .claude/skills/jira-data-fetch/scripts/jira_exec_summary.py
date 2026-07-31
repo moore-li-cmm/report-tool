@@ -126,8 +126,8 @@ def compute_epics(base_url, email, token, project, since_days) -> dict:
                 "in_flight": ((f["status"].get("statusCategory") or {}).get("key") == "indeterminate"),
                 "is_new": bool(created and created >= cutoff),
                 # Epic-level "done in this window" — pairs with is_new so the
-                # slide's "started | done" tile is genuinely last-N-days on both
-                # halves, not started-ever vs. started-ever.
+                # slide's "created | completed" tile is genuinely last-N-days on
+                # both halves, not started-ever vs. started-ever.
                 "is_done_recent": bool(resolved and resolved >= cutoff),
                 "rank_change": _recent_rank_change(base_url, email, token, e["key"], cutoff),
             }
