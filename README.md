@@ -277,7 +277,7 @@ missing from it. `.env` must sit next to `README.md`, not in `.claude/`.
 **Everything reads 0 but auth passed** — usually a scoping question, not a bug.
 Check `auto_caveats` in `data.json`: it names how many tickets were excluded for
 having no parent epic under a real Initiative. See
-[Data definitions](#data-definitions-that-surprise-people).
+[Data definitions](#data-definitions).
 
 **No PR tile on the slide** — `GITHUB_TOKEN`/`GITHUB_REPOS` aren't set, or the
 fetch failed. GitHub problems never fail the run; they degrade to
