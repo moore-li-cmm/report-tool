@@ -6,11 +6,11 @@ hand-tweaked in PowerPoint/Keynote/Google Slides before sending on. Everything
 is real text boxes / shapes, so it edits like any normal slide.
 Self-contained: only python-pptx, no Jira engine or HTML template.
 
-Layout: an optional mission line under the header, a KPI tile row, then two even
-columns — Active epics + What's-next (left) and Key updates + Focus areas
-(right). Scoped to the fields PART's Jira data actually supports: the Story
-points KPI tile renders once the Sprint field has ever been populated, else a
-"no sprint data yet" placeholder, never a mock number.
+Layout: a title + period line, a KPI tile row, then two even columns — Active
+epics + What's-next (left) and Key updates + Focus areas (right). Scoped to the
+fields PART's Jira data actually supports: the Story points KPI tile renders
+once the Sprint field has ever been populated, else a "no sprint data yet"
+placeholder, never a mock number.
 
 Usage:
     ./.venv/bin/python .claude/skills/data-format-report/scripts/format_pptx.py
@@ -51,6 +51,7 @@ TILE_GAP = Inches(0.12)
 BODY_Y = Inches(2.2)
 BOTTOM_Y = Inches(5.05)   # pushed down so a wordy Key-updates block clears Focus areas
 COL_GAP = Inches(0.15)
+EPIC_ROWS = 6             # epic rows the left panel has vertical room for
 
 
 def tile_row_geometry(n):
@@ -148,7 +149,7 @@ def section_header(slide, x, y, w, text, right_text=None):
     return Emu(y + h)
 
 
-def kpi_tile(slide, x, y, w, h, value, label, *, empty_dot=False, sub=None, value_size=19):
+def kpi_tile(slide, x, y, w, h, value, label, *, empty_dot=False, sub=None):
     # The tile card itself: rounded white rect, green border, no shadow.
     tile = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, x, y, w, h)
     tile.fill.solid()
@@ -173,7 +174,7 @@ def kpi_tile(slide, x, y, w, h, value, label, *, empty_dot=False, sub=None, valu
         _para(tf, "", 6, first=True)
         _para(tf, label.upper(), 8, bold=True, color=TEXT_GRAY, align=PP_ALIGN.CENTER)
     else:
-        _para(tf, value, value_size, bold=True, color=VALUE_GREEN, align=PP_ALIGN.CENTER, first=True)
+        _para(tf, value, 19, bold=True, color=VALUE_GREEN, align=PP_ALIGN.CENTER, first=True)
         _para(tf, label.upper(), 8, bold=True, color=TEXT_GRAY, align=PP_ALIGN.CENTER)
         if sub:
             _para(tf, sub, 7.5, color=TEXT_GRAY, align=PP_ALIGN.CENTER)
@@ -185,7 +186,8 @@ def epic_row(slide, x, y, w, epic, rank_pos):
     the epic has no child stories). Epics are pre-sorted by Jira's real Rank
     field upstream, so top-to-bottom IS the team's actual backlog order — not
     the (unused-default) Priority field, which this row deliberately doesn't
-    show."""
+    show. The epic's workflow status isn't shown either: `in_flight` is
+    available in data.json but the row has no horizontal room for it."""
     h = Inches(0.30)
     dot_w = Inches(0.26)
     right_w = Inches(1.2)
@@ -210,9 +212,12 @@ def epic_row(slide, x, y, w, epic, rank_pos):
     p = tf.paragraphs[0]
     p.space_after = Pt(0)
     name = f"{epic.get('key', '')}: {epic.get('summary', '')}"
-    # Truncate shorter if badges will be added, to prevent overflow
+    # word_wrap is off, so the name has to be truncated to fit `name_w` by hand.
+    # Calibri 8pt averages ~0.055"/char, and name_w is ~4.65" of usable width
+    # here (~84 chars); the badges appended below eat ~0.7" when both show.
+    # These caps are that estimate rounded down, so a caps-heavy title still fits.
     has_badges = epic.get("is_new") or epic.get("rank_change")
-    max_len = 40 if has_badges else 52
+    max_len = 62 if has_badges else 78
     _run(p, (name[:max_len] + "…") if len(name) > max_len + 1 else name, 8, color=TEXT_DARK)
     if epic.get("is_new"):
         _run(p, "  NEW", 7, bold=True, color=BADGE_NEW)
@@ -234,7 +239,7 @@ def epic_row(slide, x, y, w, epic, rank_pos):
     _run(p, label, 7.5, bold=False, color=TEXT_GRAY)
 
 
-def epic_legend(slide, x, y, w):
+def epic_legend(slide, x, y, w, since_days):
     """One-line key for the NEW / RANK badges shown inline on epic rows."""
     box = slide.shapes.add_textbox(x, y, w, Inches(0.22))
     tf = _tf(box)
@@ -243,9 +248,9 @@ def epic_legend(slide, x, y, w):
     p = tf.paragraphs[0]
     p.space_after = Pt(0)
     _run(p, "NEW", 7, bold=True, color=BADGE_NEW)
-    _run(p, " — created last 30d      ", 7, color=TEXT_GRAY)
+    _run(p, f" — created last {since_days}d      ", 7, color=TEXT_GRAY)
     _run(p, "⬆⬇ RANK", 7, bold=True, color=BADGE_RANK)
-    _run(p, " — shift in rank in the last 30d", 7, color=TEXT_GRAY)
+    _run(p, f" — shift in rank in the last {since_days}d", 7, color=TEXT_GRAY)
 
 
 def bullets(slide, x, y, w, h, items, size=9.5):
@@ -313,8 +318,10 @@ def build(data: dict, narrative: dict, out_path: str) -> None:
         # completed points across every sprint ever run, not just the current
         # one — stays meaningful as sprints roll over. Null only when the
         # Sprint field has never been populated on this project.
+        # `:g` because Jira story points are floats and half-points are legal —
+        # int() would silently render 2.5 as "2", while :g gives "1" for 1.0.
         (
-            {"value": str(int(data["total_completed_points"])), "label": "Story pts completed"}
+            {"value": f"{data['total_completed_points']:g}", "label": "Story pts completed"}
             if data.get("total_completed_points") is not None
             else {"value": "—", "label": "Story points", "sub": "no sprint data yet"}
         ),
@@ -326,13 +333,18 @@ def build(data: dict, narrative: dict, out_path: str) -> None:
         # reconcile against the repo (open_now matches GitHub's open count).
         # Deliberately NOT "opened", which collides with "open" (created-in-window
         # vs currently-open are different things and confuse readers).
+        # The scope (sprint name / window) goes in `sub`, not the label: a tile is
+        # only ~1.5" wide once the PR tile makes eight of them, and a sprint name
+        # inlined into the label wraps to three lines and blows the tile height.
         open_now = pr.get("open_now", 0)
         cur = pr.get("current_sprint")
         bucket = (pr.get("by_sprint") or {}).get(cur) if cur else None
-        pr_tile = ({"value": f"{bucket['merged']} | {open_now}", "label": f"PRs merged ({cur}) | open now"}
-                   if bucket else
-                   {"value": f"{pr.get('merged_in_window', 0)} | {open_now}", "label": f"PRs merged {since_days}d | open now"})
-        tiles.insert(len(tiles) - 1, pr_tile)  # just before Flagged
+        merged = bucket["merged"] if bucket else pr.get("merged_in_window", 0)
+        tiles.insert(  # just before Flagged
+            len(tiles) - 1,
+            {"value": f"{merged} | {open_now}", "label": "PRs merged | open now",
+             "sub": cur if bucket else f"last {since_days}d"},
+        )
     n = len(tiles)
     tw, gap = tile_row_geometry(n)
     ty = TILE_ROW_Y
@@ -340,7 +352,7 @@ def build(data: dict, narrative: dict, out_path: str) -> None:
     for i, t in enumerate(tiles):
         tx = Emu(MARGIN + i * (tw + gap))
         kpi_tile(slide, tx, ty, tw, th, t.get("value"), t["label"],
-                 empty_dot=t.get("empty_dot", False), sub=t.get("sub"), value_size=t.get("value_size", 19))
+                 empty_dot=t.get("empty_dot", False), sub=t.get("sub"))
 
     # --- two body columns; each has a top slot and a bottom slot, split evenly
     # across the slide width ---
@@ -350,14 +362,19 @@ def build(data: dict, narrative: dict, out_path: str) -> None:
     lw = cw = col_w
 
     # LEFT: active epics (top) + what's next (bottom). Rows are in real backlog-
-    # Rank order (sorted upstream, not Priority); each shows in-flight status
-    # and NEW / rank-change badges.
-    y = section_header(slide, lx, body_y, lw, "Top 6 epics — by rank", right_text="Completed")
+    # Rank order (sorted upstream, not Priority), with child progress and
+    # NEW / rank-change badges.
+    shown_epics = epics[:EPIC_ROWS]
+    y = section_header(slide, lx, body_y, lw, f"Top {len(shown_epics)} epics — by rank",
+                       right_text="Completed")
     ey = Emu(y + Inches(0.06))
-    for rank_pos, e in enumerate(epics[:6], start=1):
+    for rank_pos, e in enumerate(shown_epics, start=1):
         epic_row(slide, lx, ey, lw, e, rank_pos)
         ey = Emu(ey + Inches(0.30))
-    epic_legend(slide, lx, Emu(ey + Inches(0.06)), lw)
+    # Anchored to the full row block, not the last row drawn, so a short epic
+    # list doesn't float the legend up into the panel.
+    epic_legend(slide, lx, Emu(y + Inches(0.06) + EPIC_ROWS * Inches(0.30) + Inches(0.06)),
+                lw, since_days)
     if narrative.get("whats_next"):
         wy = section_header(slide, lx, bottom_y, lw, "What's next")
         bullets(slide, lx, Emu(wy + Inches(0.06)), lw, Inches(2.0),

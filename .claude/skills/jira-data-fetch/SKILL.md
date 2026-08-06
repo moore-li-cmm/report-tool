@@ -58,13 +58,15 @@ constants at the top of `fetch.py`, and it writes `data.json` to the repo root.
                     "by_sprint": {"(no sprint)": {"opened": 6, "merged": 3, "prs": [...]}},
                     "prs": [{"number": 4, "merged": true, "linked_issues": ["PART-127"], "url": "...", "author": "..."}]},
   "auto_caveats": ["..."],
-  "suggested_status": {"class": "dot--good|dot--warning|dot--critical", "label": "..."}
+  "suggested_status": {"level": "good|warning|critical", "label": "..."}
 }
 ```
 
 ## `pull_requests` (GitHub, optional)
 
-Pulled from GitHub's Search API by `github_prs.py` when `GITHUB_TOKEN` and
+Pulled by `github_prs.py` from the REST list-pulls endpoint
+(`GET /repos/{owner}/{repo}/pulls?state=all`, newest-created first, capped at 5
+pages of 100) when `GITHUB_TOKEN` and
 `GITHUB_REPOS` are set in `.env` (`GITHUB_API_URL` defaults to
 `https://api.github.com`; use `https://<host>/api/v3` for GitHub Enterprise /
 internal "lava" hosts). When unset, `pull_requests` is
@@ -78,8 +80,9 @@ description). `by_sprint` groups PRs by the sprint of the ticket they link to;
 `current_sprint` is the active (or latest) sprint. A PR whose linked ticket has
 no sprint set falls into a `"(no sprint)"` bucket over the 30-day window (a
 caveat flags this), and groups by sprint automatically once that ticket carries
-one — no code change. The pptx tile shows "merged in window | open now" (e.g.
-`10 | 3`) — deliberately *not* "opened", since created-in-window collides with
+one — no code change. The pptx tile shows "merged | open now" (e.g. `10 | 3`)
+with the scope — the sprint name, or "last 30d" — as the tile's sub-line.
+Deliberately *not* "opened", since created-in-window collides with
 currently-open and misleads readers; `open_now` reconciles with the repo's
 open-PR count.
 

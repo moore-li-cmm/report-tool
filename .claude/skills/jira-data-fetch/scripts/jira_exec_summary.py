@@ -82,6 +82,25 @@ def _recent_rank_change(base_url, email, token, key, cutoff) -> dict | None:
     return {"when": when.date().isoformat(), "direction": direction}
 
 
+def _child_counts(base_url, email, token, epic_keys) -> dict[str, tuple[int, int]]:
+    """{epic key: (done, total)} for every epic, in ONE query rather than one per
+    epic. `parent in (...)` returns all children at once and each child names its
+    own parent, so they group locally — a per-epic search here was the pipeline's
+    biggest source of round trips."""
+    if not epic_keys:
+        return {}
+    counts: dict[str, list[int]] = {k: [0, 0] for k in epic_keys}
+    jql = "parent in (%s)" % ", ".join(sorted(epic_keys))
+    for c in search(base_url, email, token, jql, ["parent", "resolutiondate"]):
+        parent_key = (c["fields"].get("parent") or {}).get("key")
+        if parent_key not in counts:
+            continue
+        counts[parent_key][1] += 1
+        if c["fields"].get("resolutiondate"):
+            counts[parent_key][0] += 1
+    return {k: (done, total) for k, (done, total) in counts.items()}
+
+
 def compute_epics(base_url, email, token, project, since_days) -> dict:
     epics = search(
         base_url, email, token,
@@ -93,6 +112,10 @@ def compute_epics(base_url, email, token, project, since_days) -> dict:
     # Epics that roll up to a real Initiative — used to scope the backlog to
     # initiative-connected work (loose/orphan tickets are dropped from backlog).
     initiative_epic_keys: set[str] = set()
+    child_counts = _child_counts(
+        base_url, email, token,
+        [e["key"] for e in epics if e["fields"]["status"]["name"].lower() not in EXCLUDED_STATUSES],
+    )
     for e in epics:
         f = e["fields"]
         status = f["status"]["name"]
@@ -104,8 +127,7 @@ def compute_epics(base_url, email, token, project, since_days) -> dict:
         if parent and parent_type == "Initiative":
             initiative_epic_keys.add(e["key"])
         target = linked if parent and parent.get("key") == INITIATIVE_KEY else other
-        children = search(base_url, email, token, f"parent = {e['key']}", ["resolutiondate"])
-        done = sum(1 for c in children if c["fields"].get("resolutiondate"))
+        done, total = child_counts.get(e["key"], (0, 0))
         created = parse_jira_datetime(f.get("created"))
         resolved = parse_jira_datetime(f.get("resolutiondate"))
         target.append(
@@ -113,7 +135,7 @@ def compute_epics(base_url, email, token, project, since_days) -> dict:
                 "key": e["key"],
                 "summary": f["summary"],
                 "done": done,
-                "total": len(children),
+                "total": total,
                 # Plain-text goal/scope so the LLM can describe the work and its
                 # value from real source text, not just the one-line title.
                 "description": adf_to_text(f.get("description")),
@@ -432,14 +454,15 @@ def compute_stats(base_url, email, token, project, since_days) -> dict:
 
     # Overall DELIVERY health of the team against initiative AA-431 (a red/amber/
     # green verdict) — NOT sprint or goal status (sprint_goal is a separate field).
-    # The label states the reason so red/amber is never unexplained. Naive default;
-    # the manager can override class+label from the fuller picture.
+    # The label states the reason so red/amber is never unexplained. Naive default,
+    # and reference-only: the slide's Project-health tile is a manual fill-in, so
+    # nothing renders this. The manager may cite or override it in prose.
     if flagged:
-        suggested_status = {"class": "dot--critical", "label": "At risk: ticket flagged in Jira"}
+        suggested_status = {"level": "critical", "label": "At risk: ticket flagged in Jira"}
     elif backlog_delivered == 0:
-        suggested_status = {"class": "dot--warning", "label": "Watch: nothing delivered this period"}
+        suggested_status = {"level": "warning", "label": "Watch: nothing delivered this period"}
     else:
-        suggested_status = {"class": "dot--good", "label": "On track"}
+        suggested_status = {"level": "good", "label": "On track"}
 
     return {
         "project": project,

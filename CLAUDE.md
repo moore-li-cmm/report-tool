@@ -133,10 +133,12 @@ user-facing entry point; it just invokes the `manager` subagent.
 - **Active Epics panel** renders `recent_epics.linked` in **real backlog-Rank
   order** (engine pre-sorts by Jira's native `Rank` field, `customfield_10019`
   on this instance — the team's actual drag-and-drop order), shown as an
-  ordinal `#1`/`#2`/… badge per row, each row also showing an in-flight status
-  (Jira "In Progress" category, rendered as "In Progress" not the raw status
-  name) with child progress, plus **NEW** (created in-window) and rank-change
-  badges. Epics carry **no `priority` field at all** — PART's Priority sits at
+  ordinal `#1`/`#2`/… badge per row, each row also showing child progress
+  (`done/total`, or `N/A` for a childless epic) plus **NEW** (created in-window)
+  and rank-change badges. The row does **not** print the epic's workflow status:
+  `in_flight` (Jira "In Progress" category) is computed into `data.json` and is
+  available to the manager in prose, but there's no horizontal room for it on the
+  row. Epics carry **no `priority` field at all** — PART's Priority sits at
   an unused default ("Lowest") on every epic and carries no signal, which is
   why ranking/ordering is derived from Rank instead. `rank_change` comes from
   changelog but only ever carries a bare direction (`raised`/`lowered`) — Jira
@@ -151,7 +153,7 @@ user-facing entry point; it just invokes the `manager` subagent.
   circle for whoever presents the slide to annotate by hand in PowerPoint. It
   is never auto-computed from `data.json` or written by the manager into
   `narrative.json`; `format_pptx.py` doesn't read a status value for it at all.
-  `suggested_status` (`{class, label}`: flagged→critical, nothing
+  `suggested_status` (`{level, label}`: flagged→critical, nothing
   delivered→warning, else good) still exists in `data.json` as a naive
   reference signal the manager may mention in prose, but it drives no tile.
 - Retargeting this at a different Jira project means updating: `PROJECT` in

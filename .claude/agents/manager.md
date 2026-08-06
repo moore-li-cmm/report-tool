@@ -268,8 +268,9 @@ answer, if asked by *their* manager:
   ("Lowest") on every epic and carries no signal. Each epic carries `in_flight`,
   `is_new`, and `rank_change` (`{when, direction}` — Jira only logs a bare
   raised/lowered direction for Rank moves, no absolute from/to). The Active
-  Epics panel shows this rank order with in-flight status and NEW /
-  rank-change badges. Don't reference "priority" for epics in prose.
+  Epics panel shows this rank order with child progress and NEW / rank-change
+  badges; it does **not** print `in_flight`, so if which epics are actually
+  underway matters, say it in prose. Don't reference "priority" for epics in prose.
 - **The left slot under the KPI row is `whats_next`** — 4-6 bullets on the
   near-term deliverables and scheduled events, derived from epic sequencing/
   descriptions and the pending decisions in the data. Full grammar, date

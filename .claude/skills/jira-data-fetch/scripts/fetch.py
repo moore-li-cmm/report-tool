@@ -82,7 +82,14 @@ def _attach_sprint_attribution(pr: dict, base_url, email, token) -> None:
 
 
 def compute_active_issues(base_url: str, email: str, token: str, project: str, since_days: int) -> list[dict]:
-    """Open issues in the window that are neither resolved nor stale — i.e. currently worked."""
+    """Work that both STARTED and is still moving in the window: issues created in
+    the last `since_days`, still unresolved, and touched in the last 14 days.
+
+    Note the `created` clause — this is deliberately the newly-opened-and-active
+    cohort, not every open ticket being worked. A ticket opened before the window
+    and actively worked today is not here; it's in the (initiative-scoped) backlog
+    and `stale` covers the neglected end. Unlike those, this list is
+    project-wide, not initiative-scoped."""
     issues = search(
         base_url, email, token,
         f"project = {project} AND created >= -{since_days}d AND resolutiondate is EMPTY AND updated >= -14d",
