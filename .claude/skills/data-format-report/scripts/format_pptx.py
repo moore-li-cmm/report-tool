@@ -386,9 +386,6 @@ def build(data: dict, narrative: dict, out_path: str) -> None:
     fy = section_header(slide, cx, bottom_y, cw, "Focus areas")
     bullets(slide, cx, Emu(fy + Inches(0.06)), cw, Inches(2.0), narrative.get("focus_areas", []), size=9)
 
-    # (Data-note footnote intentionally omitted from the slide — caveats still
-    # live in data.json/auto_caveats for reference.)
-
     prs.save(out_path)
 
 

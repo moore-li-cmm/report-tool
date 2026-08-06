@@ -99,8 +99,11 @@ user-facing entry point; it just invokes the `manager` subagent.
   `Discard` also marks other one-off test/junk tickets project-wide (not just
   PART-1's children — e.g. standalone "delete me" stories under real epics);
   `_WORKITEM_FILTER` excludes all of them from `backlog_total`/
-  `resolved_this_period`/`backlog_delivered`/`throughput_per_week`, with a
-  caveat naming which tickets were dropped so the exclusion isn't silent.
+  `resolved_this_period`/`backlog_delivered`/`throughput_per_week`, and
+  `_child_counts` excludes them from an epic's `done`/`total` child progress
+  (a resolved "delete me" story otherwise counted in *both* halves of the
+  badge and read as real progress), with a caveat naming which tickets were
+  dropped so the exclusion isn't silent.
 - **Sprint field (`customfield_10020`) and Story Points field
   (`customfield_13078`) are now populated** — a sprint ("PartInt Pilot 1")
   started 2026-07-29. `sprint_goal`/`total_completed_points` are computed live
@@ -132,10 +135,13 @@ user-facing entry point; it just invokes the `manager` subagent.
   was excluded for this reason.
 - **Active Epics panel** renders `recent_epics.linked` in **real backlog-Rank
   order** (engine pre-sorts by Jira's native `Rank` field, `customfield_10019`
-  on this instance — the team's actual drag-and-drop order), shown as an
+  on this instance — the team's actual drag-and-drop order; an epic that has
+  never been ranked sorts *last* rather than taking the `#1` badge, which raw
+  string order would give its empty rank), shown as an
   ordinal `#1`/`#2`/… badge per row, each row also showing child progress
-  (`done/total`, or `N/A` for a childless epic) plus **NEW** (created in-window)
-  and rank-change badges. The row does **not** print the epic's workflow status:
+  (`done/total` over non-Discard children only, or `N/A` for a childless epic)
+  plus **NEW** (created in-window) and rank-change badges. The row does **not**
+  print the epic's workflow status:
   `in_flight` (Jira "In Progress" category) is computed into `data.json` and is
   available to the manager in prose, but there's no horizontal room for it on the
   row. Epics carry **no `priority` field at all** — PART's Priority sits at

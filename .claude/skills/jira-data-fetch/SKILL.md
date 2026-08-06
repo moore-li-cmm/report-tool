@@ -35,7 +35,7 @@ constants at the top of `fetch.py`, and it writes `data.json` to the repo root.
   "period_label": "Last 30 days",
   "generated_at": "...",
   "initiative_key": "AA-431",
-  "initiative_name": "AA-431 — Digital Health Partnerships – Phase 1 Provider Focus",
+  "initiative_name": "AA-431 — Digital Health Partnerships - Phase 1 Provider Focus",
   "initiative_description": "plain-text 'what/why' pulled from the initiative (AA-431) — no dedicated narrative field, available for the manager to reference in prose if useful",
   "initiative_status": "New",
   "sprint_goal": {"name": "PartInt Pilot 1", "goal": null, "start_date": "...", "end_date": "...", "committed_points": 26.0, "completed_points": 0, "in_progress_points": 8.0},
@@ -73,8 +73,10 @@ Done but which carries no `resolutiondate` can't be dated and stays visible.
 ## `pull_requests` (GitHub, optional)
 
 Pulled by `github_prs.py` from the REST list-pulls endpoint
-(`GET /repos/{owner}/{repo}/pulls?state=all`, newest-created first, capped at 5
-pages of 100) when `GITHUB_TOKEN` and
+(`GET /repos/{owner}/{repo}/pulls`, newest-created first, capped at 5 pages of
+100 — `state=all` for the windowed PR list, plus a separate `state=open` call
+for `open_now`, so the count a reader checks against GitHub can't be truncated
+by that cap) when `GITHUB_TOKEN` and
 `GITHUB_REPOS` are set in `.env` (`GITHUB_API_URL` defaults to
 `https://api.github.com`; use `https://<host>/api/v3` for GitHub Enterprise /
 internal "lava" hosts). When unset, `pull_requests` is

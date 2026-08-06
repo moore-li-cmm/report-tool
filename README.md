@@ -232,7 +232,9 @@ available in this repo.
   `throughput_per_week`/`epic_cycle_time` instead; never fabricate a story-point
   number.
 - **Status `Discard` marks test/junk data** (e.g. `PART-1` "Sample Epic") and is
-  excluded project-wide, with a caveat naming what was dropped.
+  excluded project-wide — including from an epic row's `done/total` child
+  progress, so a resolved "delete me" story can't read as delivery — with a
+  caveat naming what was dropped.
 - **Epics outside `AA-431`** land in `recent_epics.other` and must be reported
   separately, not blended into initiative progress.
 

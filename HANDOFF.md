@@ -100,8 +100,9 @@ tile costs one tile. A wrong Jira number is a wrong statement to your leadership
   trends, and it's the highest-value improvement available.
 - **No automated tests.** Changes are verified by running it and looking.
 - **A Jira hiccup means re-running.** No retry; the fetch just stops.
-- **The "overdue" section is always empty** because no ticket here has a due
-  date. Harmless, and it'd start working on its own if the team set them.
+- **The "overdue" list is always empty** because no ticket here has a due date.
+  It's collected in `data.json` and never reaches the slide. Harmless, and it'd
+  start working on its own if the team set due dates.
 
 ---
 

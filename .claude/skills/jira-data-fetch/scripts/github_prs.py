@@ -81,9 +81,13 @@ def fetch_pr_stats(api_url: str, token: str, repos: list[str], since_days: int,
     open_now = 0
     try:
         for repo in repos:
-            all_pulls = _list_pulls(api_url, token, repo, "all")
-            open_now += sum(1 for p in all_pulls if p.get("state") == "open")
-            for p in all_pulls:
+            # open_now comes from its own state=open query rather than by
+            # filtering the state=all crawl: that crawl is newest-created-first
+            # and page-capped, so on a busy repo an older PR that's still open
+            # falls off the end — and open_now is the one number a reader
+            # reconciles directly against GitHub's open-PR count.
+            open_now += len(_list_pulls(api_url, token, repo, "open"))
+            for p in _list_pulls(api_url, token, repo, "all"):
                 created, merged = _dt(p.get("created_at")), _dt(p.get("merged_at"))
                 in_window = (created and created >= cutoff) or (merged and merged >= cutoff)
                 if not in_window:
