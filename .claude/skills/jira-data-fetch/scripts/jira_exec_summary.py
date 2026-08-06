@@ -108,7 +108,7 @@ def compute_epics(base_url, email, token, project, since_days) -> dict:
         ["summary", "status", "parent", "description", RANK_FIELD_ID, "created", "resolutiondate"],
     )
     cutoff = datetime.now(timezone.utc) - timedelta(days=since_days)
-    linked, other, excluded = [], [], []
+    linked, other, excluded, aged_out = [], [], [], []
     # Epics that roll up to a real Initiative — used to scope the backlog to
     # initiative-connected work (loose/orphan tickets are dropped from backlog).
     initiative_epic_keys: set[str] = set()
@@ -126,10 +126,21 @@ def compute_epics(base_url, email, token, project, since_days) -> dict:
         parent_type = ((parent or {}).get("fields", {}).get("issuetype") or {}).get("name")
         if parent and parent_type == "Initiative":
             initiative_epic_keys.add(e["key"])
-        target = linked if parent and parent.get("key") == INITIATIVE_KEY else other
         done, total = child_counts.get(e["key"], (0, 0))
         created = parse_jira_datetime(f.get("created"))
         resolved = parse_jira_datetime(f.get("resolutiondate"))
+        # An epic gets one last report — the window it resolves in — then ages
+        # out, so the panel doesn't silt up with work that finished months ago.
+        # Resolution date is the only clock here: a Done epic with no
+        # resolutiondate can't be dated, so it stays visible (safe direction).
+        # Note this runs *after* initiative_epic_keys is populated above —
+        # backlog/cycle-time scoping must still see aged-out epics, or resolved
+        # tickets under them would silently drop out of the delivery numbers.
+        if resolved and resolved < cutoff:
+            aged_out.append({"key": e["key"], "summary": f["summary"],
+                             "resolved": f.get("resolutiondate")})
+            continue
+        target = linked if parent and parent.get("key") == INITIATIVE_KEY else other
         target.append(
             {
                 "key": e["key"],
@@ -163,6 +174,7 @@ def compute_epics(base_url, email, token, project, since_days) -> dict:
         "linked": linked,
         "other": other,
         "excluded": excluded,
+        "aged_out": aged_out,
         "initiative_epic_keys": sorted(initiative_epic_keys),
     }
 
@@ -417,6 +429,14 @@ def compute_stats(base_url, email, token, project, since_days) -> dict:
     if epics["excluded"]:
         keys = ", ".join(f'"{e["key"]}"' for e in epics["excluded"])
         auto_caveats.append(f"{keys} excluded from epic rollups (status indicates test/discarded data).")
+
+    if epics["aged_out"]:
+        keys = ", ".join(f'"{e["key"]}"' for e in epics["aged_out"])
+        auto_caveats.append(
+            f"Epic(s) {keys} resolved before this reporting window and have aged out of the epic "
+            "panel (each is shown only in the window it completes). They still count toward backlog "
+            "and cycle-time scoping — don't report them as current work."
+        )
 
     non_initiative_done = [e for e in epics["other"] if e.get("is_done_recent")]
     if non_initiative_done:

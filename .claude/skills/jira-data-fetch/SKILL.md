@@ -44,7 +44,7 @@ constants at the top of `fetch.py`, and it writes `data.json` to the repo root.
   "backlog_delivered": 1,
   "epic_cycle_time": {"days": 14.0, "resolved_epics": 2},
   "throughput_per_week": 1.8,
-  "recent_epics": {"linked": [{"key": "...", "summary": "...", "done": 0, "total": 0, "description": "epic goal text", "status": "Analyzing", "in_flight": true, "is_new": false, "is_done_recent": false, "rank_change": {"when": "2026-07-20", "direction": "raised"}}], "other": [...], "excluded": [...]},
+  "recent_epics": {"linked": [{"key": "...", "summary": "...", "done": 0, "total": 0, "description": "epic goal text", "status": "Analyzing", "in_flight": true, "is_new": false, "is_done_recent": false, "rank_change": {"when": "2026-07-20", "direction": "raised"}}], "other": [...], "excluded": [...], "aged_out": [{"key": "...", "summary": "...", "resolved": "..."}]},
   "resolved_this_period": [{"key": "...", "summary": "...", "issuetype": "...", "description": "what actually shipped"}],
   "active_issues": [{"key": "...", "summary": "...", "status": "...", "issuetype": "...", "assignee": "..."}],
   "flagged": [{"issue": "...", "summary": "...", "status": "..."}],
@@ -61,6 +61,14 @@ constants at the top of `fetch.py`, and it writes `data.json` to the repo root.
   "suggested_status": {"level": "good|warning|critical", "label": "..."}
 }
 ```
+
+**Epics age out of `recent_epics`.** An epic resolved *before* the reporting
+window moves to `recent_epics.aged_out` instead of `linked`/`other`, so it gets
+one last appearance — the window it completes in, where `is_done_recent` is
+true — and then leaves the Active Epics panel rather than holding a rank slot
+forever. Aged-out epics still scope the backlog and cycle-time numbers exactly
+as before; only their panel/prose visibility changes. An epic whose status is
+Done but which carries no `resolutiondate` can't be dated and stays visible.
 
 ## `pull_requests` (GitHub, optional)
 

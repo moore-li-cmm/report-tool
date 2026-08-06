@@ -146,6 +146,16 @@ user-facing entry point; it just invokes the `manager` subagent.
   position. Each epic also carries `is_new`/`is_done_recent` (created/resolved
   within the reporting window), which feed the slide's "Epics created |
   completed" KPI tile — both halves time-boxed to the reporting window.
+- **Finished epics age out of the panel after one appearance.** An epic
+  resolved *before* the window goes to `recent_epics.aged_out` instead of
+  `linked`/`other`, so it's shown in the window it completes (where
+  `is_done_recent` is true) and gone the next — otherwise done work holds a
+  Rank slot in the top-6 forever. The filter runs *after*
+  `initiative_epic_keys` is built, deliberately: backlog/throughput/cycle-time
+  scoping must still see aged-out epics or resolved tickets under them would
+  silently stop counting as delivery. A Done epic with no `resolutiondate`
+  can't be dated, so it stays visible. An `auto_caveats` line names what aged
+  out, so the drop isn't silent.
 - `initiative_status` (AA-431's own Jira status/phase) is still computed and
   present in `data.json`, but has no dedicated slide tile. It's still available
   for the manager to reference in prose if useful.

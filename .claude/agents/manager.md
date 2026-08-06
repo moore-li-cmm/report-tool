@@ -271,6 +271,11 @@ answer, if asked by *their* manager:
   Epics panel shows this rank order with child progress and NEW / rank-change
   badges; it does **not** print `in_flight`, so if which epics are actually
   underway matters, say it in prose. Don't reference "priority" for epics in prose.
+- **Epics age out once they're done.** An epic resolved before this window sits
+  in `recent_epics.aged_out`, not `linked` — it already had its completion
+  report last time, so don't write it up again as current work. An epic
+  resolved *inside* the window is still in `linked` with `is_done_recent`, and
+  that's the one window to claim it as delivered.
 - **The left slot under the KPI row is `whats_next`** — 4-6 bullets on the
   near-term deliverables and scheduled events, derived from epic sequencing/
   descriptions and the pending decisions in the data. Full grammar, date

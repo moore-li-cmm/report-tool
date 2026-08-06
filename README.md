@@ -289,14 +289,6 @@ interpreter than the one you installed into. Use `./.venv/bin/python`.
 
 ---
 
-## Known gaps
-
-- **Completed epics never age out of the epic panel.** `recent_epics.linked`
-  carries every non-discarded epic, sorted by `Rank` alone, so a finished epic
-  keeps its top-6 slot indefinitely. Wanted behavior: show an epic in the month
-  it completes (the `is_done_recent` flag already marks exactly that), then drop
-  it the following month, so the panel doesn't silt up with old, done work.
-
 ## Retargeting to another Jira project
 
 Update: `PROJECT` in `fetch.py`; `INITIATIVE_KEY`/`INITIATIVE_NAME`/
