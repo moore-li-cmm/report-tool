@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Compute PART exec-summary stats — the engine behind the report pipeline.
 
-A library module wrapped by the jira-data-fetch and data-format-report skills
-(see .claude/skills/) and orchestrated by the manager subagent
-(.claude/agents/manager.md). `compute_stats` and `search` are the entry points
-fetch.py imports. Pulls live Jira data and returns structured, factual stats —
-no analysis and no rendering. Not a CLI.
+A library module behind the jira-data-fetch skill (see .claude/skills/);
+`compute_stats` and `search` are the entry points fetch.py imports. Pulls live
+Jira data and returns structured, factual stats — no analysis and no rendering.
+Not a CLI. (The rendering skill, data-format-report, reads the resulting
+data.json and never imports this module.)
 
 Auth: same repo-root .env as jira_report.py.
 """
@@ -24,12 +24,12 @@ from jira_report import (
     parse_jira_datetime,
 )
 
-# Confirmed via /rest/api/3/field on this instance: "Story Points"  
+# Confirmed via /rest/api/3/field on this instance: "Story Points"
 # Other projects may use a different ID.
 STORY_POINTS_FIELD_ID = "customfield_13078"
 
 # "Rank" field (com.pyxis.greenhopper.jira:gh-lexo-rank). Epics are
-# ordered by this field's LexoRank string, ascending. 
+# ordered by this field's LexoRank string, ascending.
 # Other projects/instances may use a different ID.
 RANK_FIELD_ID = "customfield_10019"
 
@@ -39,8 +39,12 @@ INITIATIVE_KEY = "AA-431"
 INITIATIVE_NAME = "AA-431 — Digital Health Partnerships - Phase 1 Provider Focus"
 
 # Excluded wherever a terminal status could otherwise inflate
-# a completion count (epic rollups, delivery/throughput, epic cycle time).
+# a completion count (epic rollups, epic child progress, delivery/throughput,
+# epic cycle time).
 EXCLUDED_STATUSES = {"discard"}
+# The same set as a JQL value list, so every query that has to drop test/junk
+# tickets spells the exclusion identically.
+_EXCLUDED_STATUS_JQL = ", ".join(f'"{s}"' for s in EXCLUDED_STATUSES)
 DONE_STATUS_NAMES = {"done", "discard", "cancelled", "holding tank"}
 
 def search(base_url, email, token, jql, fields):
@@ -82,6 +86,32 @@ def _recent_rank_change(base_url, email, token, key, cutoff) -> dict | None:
     return {"when": when.date().isoformat(), "direction": direction}
 
 
+def _child_counts(base_url, email, token, epic_keys) -> dict[str, tuple[int, int]]:
+    """{epic key: (done, total)} for every epic, in ONE query rather than one per
+    epic. `parent in (...)` returns all children at once and each child names its
+    own parent, so they group locally — a per-epic search here was the pipeline's
+    biggest source of round trips.
+
+    EXCLUDED_STATUSES children are dropped, same as everywhere else: a resolved
+    "delete me" Discard story would otherwise count in BOTH halves of the epic's
+    done/total badge and read as real progress on the slide."""
+    if not epic_keys:
+        return {}
+    counts: dict[str, list[int]] = {k: [0, 0] for k in epic_keys}
+    jql = "parent in (%s) AND status not in (%s)" % (
+        ", ".join(sorted(epic_keys)),
+        _EXCLUDED_STATUS_JQL,
+    )
+    for c in search(base_url, email, token, jql, ["parent", "resolutiondate"]):
+        parent_key = (c["fields"].get("parent") or {}).get("key")
+        if parent_key not in counts:
+            continue
+        counts[parent_key][1] += 1
+        if c["fields"].get("resolutiondate"):
+            counts[parent_key][0] += 1
+    return {k: (done, total) for k, (done, total) in counts.items()}
+
+
 def compute_epics(base_url, email, token, project, since_days) -> dict:
     epics = search(
         base_url, email, token,
@@ -89,10 +119,14 @@ def compute_epics(base_url, email, token, project, since_days) -> dict:
         ["summary", "status", "parent", "description", RANK_FIELD_ID, "created", "resolutiondate"],
     )
     cutoff = datetime.now(timezone.utc) - timedelta(days=since_days)
-    linked, other, excluded = [], [], []
+    linked, other, excluded, aged_out = [], [], [], []
     # Epics that roll up to a real Initiative — used to scope the backlog to
     # initiative-connected work (loose/orphan tickets are dropped from backlog).
     initiative_epic_keys: set[str] = set()
+    child_counts = _child_counts(
+        base_url, email, token,
+        [e["key"] for e in epics if e["fields"]["status"]["name"].lower() not in EXCLUDED_STATUSES],
+    )
     for e in epics:
         f = e["fields"]
         status = f["status"]["name"]
@@ -103,17 +137,27 @@ def compute_epics(base_url, email, token, project, since_days) -> dict:
         parent_type = ((parent or {}).get("fields", {}).get("issuetype") or {}).get("name")
         if parent and parent_type == "Initiative":
             initiative_epic_keys.add(e["key"])
-        target = linked if parent and parent.get("key") == INITIATIVE_KEY else other
-        children = search(base_url, email, token, f"parent = {e['key']}", ["resolutiondate"])
-        done = sum(1 for c in children if c["fields"].get("resolutiondate"))
+        done, total = child_counts.get(e["key"], (0, 0))
         created = parse_jira_datetime(f.get("created"))
         resolved = parse_jira_datetime(f.get("resolutiondate"))
+        # An epic gets one last report — the window it resolves in — then ages
+        # out, so the panel doesn't silt up with work that finished months ago.
+        # Resolution date is the only clock here: a Done epic with no
+        # resolutiondate can't be dated, so it stays visible (safe direction).
+        # Note this runs *after* initiative_epic_keys is populated above —
+        # backlog/cycle-time scoping must still see aged-out epics, or resolved
+        # tickets under them would silently drop out of the delivery numbers.
+        if resolved and resolved < cutoff:
+            aged_out.append({"key": e["key"], "summary": f["summary"],
+                             "resolved": f.get("resolutiondate")})
+            continue
+        target = linked if parent and parent.get("key") == INITIATIVE_KEY else other
         target.append(
             {
                 "key": e["key"],
                 "summary": f["summary"],
                 "done": done,
-                "total": len(children),
+                "total": total,
                 # Plain-text goal/scope so the LLM can describe the work and its
                 # value from real source text, not just the one-line title.
                 "description": adf_to_text(f.get("description")),
@@ -132,15 +176,21 @@ def compute_epics(base_url, email, token, project, since_days) -> dict:
                 "rank_change": _recent_rank_change(base_url, email, token, e["key"], cutoff),
             }
         )
-    # Real backlog order: LexoRank strings sort correctly as plain strings.
-    linked.sort(key=lambda x: x["_rank"])
-    other.sort(key=lambda x: x["_rank"])
+    # Real backlog order: LexoRank strings sort correctly as plain strings. An
+    # epic that has never been ranked (empty string) sorts LAST rather than
+    # claiming the #1 badge, which plain string order would give it.
+    def rank_key(epic):
+        return (not epic["_rank"], epic["_rank"])
+
+    linked.sort(key=rank_key)
+    other.sort(key=rank_key)
     for e in linked + other:
         del e["_rank"]
     return {
         "linked": linked,
         "other": other,
         "excluded": excluded,
+        "aged_out": aged_out,
         "initiative_epic_keys": sorted(initiative_epic_keys),
     }
 
@@ -167,8 +217,8 @@ def compute_flagged(base_url, email, token, project) -> list[dict]:
 # (test/junk "Discard" tickets — not all under the excluded Sample Epic; some
 # are individually discarded stories under real epics) excluded so they don't
 # inflate delivery/throughput.
-_WORKITEM_FILTER = "issuetype not in (Epic, Sub-task) AND status not in (%s)" % ", ".join(
-    f'"{s}"' for s in EXCLUDED_STATUSES
+_WORKITEM_FILTER = (
+    f"issuetype not in (Epic, Sub-task) AND status not in ({_EXCLUDED_STATUS_JQL})"
 )
 
 
@@ -319,11 +369,10 @@ def compute_stats(base_url, email, token, project, since_days) -> dict:
 
     # How many EXCLUDED_STATUSES (test/junk) items resolved in-window were left
     # out of the count above — surfaced as a caveat so the exclusion isn't silent.
-    excluded_status_list = ", ".join(f'"{s}"' for s in EXCLUDED_STATUSES)
     discarded_in_period = search(
         base_url, email, token,
         f"project = {project} AND issuetype not in (Epic, Sub-task) "
-        f"AND status in ({excluded_status_list}) AND resolutiondate >= -{since_days}d",
+        f"AND status in ({_EXCLUDED_STATUS_JQL}) AND resolutiondate >= -{since_days}d",
         ["summary"],
     )
 
@@ -396,7 +445,22 @@ def compute_stats(base_url, email, token, project, since_days) -> dict:
         keys = ", ".join(f'"{e["key"]}"' for e in epics["excluded"])
         auto_caveats.append(f"{keys} excluded from epic rollups (status indicates test/discarded data).")
 
-    non_initiative_done = [e for e in epics["other"] if e.get("is_done_recent")]
+    if epics["aged_out"]:
+        keys = ", ".join(f'"{e["key"]}"' for e in epics["aged_out"])
+        auto_caveats.append(
+            f"Epic(s) {keys} resolved before this reporting window and have aged out of the epic "
+            "panel (each is shown only in the window it completes). They still count toward backlog "
+            "and cycle-time scoping — don't report them as current work."
+        )
+
+    # `other` is "not under AA-431", which is NOT the same as "not under any
+    # initiative" — an epic under a different Initiative still counts toward
+    # epic_cycle_time, so key off initiative_epic_keys or this caveat would claim
+    # an exclusion that never happened.
+    non_initiative_done = [
+        e for e in epics["other"]
+        if e.get("is_done_recent") and e["key"] not in initiative_epic_keys
+    ]
     if non_initiative_done:
         keys = ", ".join(f'"{e["key"]}"' for e in non_initiative_done)
         auto_caveats.append(
@@ -410,7 +474,7 @@ def compute_stats(base_url, email, token, project, since_days) -> dict:
             f"{len(discarded_in_period)} ticket(s) resolved in-window with status Discard ({keys}) are "
             "test/junk data (not all under the excluded Sample Epic — some are individually discarded "
             "stories under real epics) and are excluded from resolved_this_period/backlog_delivered/"
-            "throughput_per_week — not counted as real delivery."
+            "throughput_per_week and from their epic's done/total — not counted as real delivery."
         )
 
     flagged = compute_flagged(base_url, email, token, project)
@@ -432,14 +496,15 @@ def compute_stats(base_url, email, token, project, since_days) -> dict:
 
     # Overall DELIVERY health of the team against initiative AA-431 (a red/amber/
     # green verdict) — NOT sprint or goal status (sprint_goal is a separate field).
-    # The label states the reason so red/amber is never unexplained. Naive default;
-    # the manager can override class+label from the fuller picture.
+    # The label states the reason so red/amber is never unexplained. Naive default,
+    # and reference-only: the slide's Project-health tile is a manual fill-in, so
+    # nothing renders this. The manager may cite or override it in prose.
     if flagged:
-        suggested_status = {"class": "dot--critical", "label": "At risk: ticket flagged in Jira"}
+        suggested_status = {"level": "critical", "label": "At risk: ticket flagged in Jira"}
     elif backlog_delivered == 0:
-        suggested_status = {"class": "dot--warning", "label": "Watch: nothing delivered this period"}
+        suggested_status = {"level": "warning", "label": "Watch: nothing delivered this period"}
     else:
-        suggested_status = {"class": "dot--good", "label": "On track"}
+        suggested_status = {"level": "good", "label": "On track"}
 
     return {
         "project": project,

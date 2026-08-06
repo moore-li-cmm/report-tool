@@ -35,7 +35,7 @@ constants at the top of `fetch.py`, and it writes `data.json` to the repo root.
   "period_label": "Last 30 days",
   "generated_at": "...",
   "initiative_key": "AA-431",
-  "initiative_name": "AA-431 — Digital Health Partnerships – Phase 1 Provider Focus",
+  "initiative_name": "AA-431 — Digital Health Partnerships - Phase 1 Provider Focus",
   "initiative_description": "plain-text 'what/why' pulled from the initiative (AA-431) — no dedicated narrative field, available for the manager to reference in prose if useful",
   "initiative_status": "New",
   "sprint_goal": {"name": "PartInt Pilot 1", "goal": null, "start_date": "...", "end_date": "...", "committed_points": 26.0, "completed_points": 0, "in_progress_points": 8.0},
@@ -44,7 +44,7 @@ constants at the top of `fetch.py`, and it writes `data.json` to the repo root.
   "backlog_delivered": 1,
   "epic_cycle_time": {"days": 14.0, "resolved_epics": 2},
   "throughput_per_week": 1.8,
-  "recent_epics": {"linked": [{"key": "...", "summary": "...", "done": 0, "total": 0, "description": "epic goal text", "status": "Analyzing", "in_flight": true, "is_new": false, "is_done_recent": false, "rank_change": {"when": "2026-07-20", "direction": "raised"}}], "other": [...], "excluded": [...]},
+  "recent_epics": {"linked": [{"key": "...", "summary": "...", "done": 0, "total": 0, "description": "epic goal text", "status": "Analyzing", "in_flight": true, "is_new": false, "is_done_recent": false, "rank_change": {"when": "2026-07-20", "direction": "raised"}}], "other": [...], "excluded": [...], "aged_out": [{"key": "...", "summary": "...", "resolved": "..."}]},
   "resolved_this_period": [{"key": "...", "summary": "...", "issuetype": "...", "description": "what actually shipped"}],
   "active_issues": [{"key": "...", "summary": "...", "status": "...", "issuetype": "...", "assignee": "..."}],
   "flagged": [{"issue": "...", "summary": "...", "status": "..."}],
@@ -58,13 +58,25 @@ constants at the top of `fetch.py`, and it writes `data.json` to the repo root.
                     "by_sprint": {"(no sprint)": {"opened": 6, "merged": 3, "prs": [...]}},
                     "prs": [{"number": 4, "merged": true, "linked_issues": ["PART-127"], "url": "...", "author": "..."}]},
   "auto_caveats": ["..."],
-  "suggested_status": {"class": "dot--good|dot--warning|dot--critical", "label": "..."}
+  "suggested_status": {"level": "good|warning|critical", "label": "..."}
 }
 ```
 
+**Epics age out of `recent_epics`.** An epic resolved *before* the reporting
+window moves to `recent_epics.aged_out` instead of `linked`/`other`, so it gets
+one last appearance — the window it completes in, where `is_done_recent` is
+true — and then leaves the Active Epics panel rather than holding a rank slot
+forever. Aged-out epics still scope the backlog and cycle-time numbers exactly
+as before; only their panel/prose visibility changes. An epic whose status is
+Done but which carries no `resolutiondate` can't be dated and stays visible.
+
 ## `pull_requests` (GitHub, optional)
 
-Pulled from GitHub's Search API by `github_prs.py` when `GITHUB_TOKEN` and
+Pulled by `github_prs.py` from the REST list-pulls endpoint
+(`GET /repos/{owner}/{repo}/pulls`, newest-created first, capped at 5 pages of
+100 — `state=all` for the windowed PR list, plus a separate `state=open` call
+for `open_now`, so the count a reader checks against GitHub can't be truncated
+by that cap) when `GITHUB_TOKEN` and
 `GITHUB_REPOS` are set in `.env` (`GITHUB_API_URL` defaults to
 `https://api.github.com`; use `https://<host>/api/v3` for GitHub Enterprise /
 internal "lava" hosts). When unset, `pull_requests` is
@@ -78,8 +90,9 @@ description). `by_sprint` groups PRs by the sprint of the ticket they link to;
 `current_sprint` is the active (or latest) sprint. A PR whose linked ticket has
 no sprint set falls into a `"(no sprint)"` bucket over the 30-day window (a
 caveat flags this), and groups by sprint automatically once that ticket carries
-one — no code change. The pptx tile shows "merged in window | open now" (e.g.
-`10 | 3`) — deliberately *not* "opened", since created-in-window collides with
+one — no code change. The pptx tile shows "merged | open now" (e.g. `10 | 3`)
+with the scope — the sprint name, or "last 30d" — as the tile's sub-line.
+Deliberately *not* "opened", since created-in-window collides with
 currently-open and misleads readers; `open_now` reconciles with the repo's
 open-PR count.
 

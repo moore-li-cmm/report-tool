@@ -99,8 +99,11 @@ user-facing entry point; it just invokes the `manager` subagent.
   `Discard` also marks other one-off test/junk tickets project-wide (not just
   PART-1's children — e.g. standalone "delete me" stories under real epics);
   `_WORKITEM_FILTER` excludes all of them from `backlog_total`/
-  `resolved_this_period`/`backlog_delivered`/`throughput_per_week`, with a
-  caveat naming which tickets were dropped so the exclusion isn't silent.
+  `resolved_this_period`/`backlog_delivered`/`throughput_per_week`, and
+  `_child_counts` excludes them from an epic's `done`/`total` child progress
+  (a resolved "delete me" story otherwise counted in *both* halves of the
+  badge and read as real progress), with a caveat naming which tickets were
+  dropped so the exclusion isn't silent.
 - **Sprint field (`customfield_10020`) and Story Points field
   (`customfield_13078`) are now populated** — a sprint ("PartInt Pilot 1")
   started 2026-07-29. `sprint_goal`/`total_completed_points` are computed live
@@ -132,11 +135,16 @@ user-facing entry point; it just invokes the `manager` subagent.
   was excluded for this reason.
 - **Active Epics panel** renders `recent_epics.linked` in **real backlog-Rank
   order** (engine pre-sorts by Jira's native `Rank` field, `customfield_10019`
-  on this instance — the team's actual drag-and-drop order), shown as an
-  ordinal `#1`/`#2`/… badge per row, each row also showing an in-flight status
-  (Jira "In Progress" category, rendered as "In Progress" not the raw status
-  name) with child progress, plus **NEW** (created in-window) and rank-change
-  badges. Epics carry **no `priority` field at all** — PART's Priority sits at
+  on this instance — the team's actual drag-and-drop order; an epic that has
+  never been ranked sorts *last* rather than taking the `#1` badge, which raw
+  string order would give its empty rank), shown as an
+  ordinal `#1`/`#2`/… badge per row, each row also showing child progress
+  (`done/total` over non-Discard children only, or `N/A` for a childless epic)
+  plus **NEW** (created in-window) and rank-change badges. The row does **not**
+  print the epic's workflow status:
+  `in_flight` (Jira "In Progress" category) is computed into `data.json` and is
+  available to the manager in prose, but there's no horizontal room for it on the
+  row. Epics carry **no `priority` field at all** — PART's Priority sits at
   an unused default ("Lowest") on every epic and carries no signal, which is
   why ranking/ordering is derived from Rank instead. `rank_change` comes from
   changelog but only ever carries a bare direction (`raised`/`lowered`) — Jira
@@ -144,6 +152,16 @@ user-facing entry point; it just invokes the `manager` subagent.
   position. Each epic also carries `is_new`/`is_done_recent` (created/resolved
   within the reporting window), which feed the slide's "Epics created |
   completed" KPI tile — both halves time-boxed to the reporting window.
+- **Finished epics age out of the panel after one appearance.** An epic
+  resolved *before* the window goes to `recent_epics.aged_out` instead of
+  `linked`/`other`, so it's shown in the window it completes (where
+  `is_done_recent` is true) and gone the next — otherwise done work holds a
+  Rank slot in the top-6 forever. The filter runs *after*
+  `initiative_epic_keys` is built, deliberately: backlog/throughput/cycle-time
+  scoping must still see aged-out epics or resolved tickets under them would
+  silently stop counting as delivery. A Done epic with no `resolutiondate`
+  can't be dated, so it stays visible. An `auto_caveats` line names what aged
+  out, so the drop isn't silent.
 - `initiative_status` (AA-431's own Jira status/phase) is still computed and
   present in `data.json`, but has no dedicated slide tile. It's still available
   for the manager to reference in prose if useful.
@@ -151,7 +169,7 @@ user-facing entry point; it just invokes the `manager` subagent.
   circle for whoever presents the slide to annotate by hand in PowerPoint. It
   is never auto-computed from `data.json` or written by the manager into
   `narrative.json`; `format_pptx.py` doesn't read a status value for it at all.
-  `suggested_status` (`{class, label}`: flagged→critical, nothing
+  `suggested_status` (`{level, label}`: flagged→critical, nothing
   delivered→warning, else good) still exists in `data.json` as a naive
   reference signal the manager may mention in prose, but it drives no tile.
 - Retargeting this at a different Jira project means updating: `PROJECT` in

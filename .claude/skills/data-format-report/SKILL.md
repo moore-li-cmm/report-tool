@@ -134,7 +134,9 @@ counts). The rest, specific to writing bullets for this slide:
   before featuring a number as insight (e.g. don't report "60% unassigned" as
   a workload finding if it's flagged as untriaged noise).
 - **`recent_epics.excluded`** are filtered test/junk epics — don't resurrect
-  them into the narrative.
+  them into the narrative. **`recent_epics.aged_out`** are epics that resolved
+  before this window and were already reported as complete — don't resurrect
+  those either.
 - Keep each bullet to one sentence — it becomes a bullet in a slide panel,
   not a paragraph.
 

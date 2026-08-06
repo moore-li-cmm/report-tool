@@ -102,7 +102,9 @@ def fetch_changelog(base_url: str, email: str, api_token: str, issue_key: str) -
     try:
         response = requests.get(
             base,
-            params={"expand": "changelog", "fields": "status"},
+            # `fields=` empty: callers only read `changelog`, so there's no reason
+            # to make Jira serialize the issue's fields alongside it.
+            params={"expand": "changelog", "fields": ""},
             auth=(email, api_token),
             headers={"Accept": "application/json"},
             timeout=30,
